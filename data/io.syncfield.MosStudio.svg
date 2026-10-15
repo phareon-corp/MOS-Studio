@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#221d17"/>
+      <stop offset="1" stop-color="#15110d"/>
+    </linearGradient>
+  </defs>
+  <!-- fundo arredondado (estilo ícone GNOME) -->
+  <rect x="8" y="8" width="112" height="112" rx="26" fill="url(#bg)" stroke="#3a3228" stroke-width="2"/>
+  <!-- corte de MOSFET -->
+  <!-- substrato -->
+  <rect x="28" y="78" width="72" height="20" rx="2" fill="#2e261e"/>
+  <!-- fonte e dreno (vinho) -->
+  <rect x="28" y="64" width="20" height="22" rx="2" fill="#c43c2c"/>
+  <rect x="80" y="64" width="20" height="22" rx="2" fill="#c43c2c"/>
+  <!-- oxido de porta (linha clara) -->
+  <rect x="50" y="60" width="28" height="4" fill="#d4a574"/>
+  <!-- porta de poli (bege) -->
+  <rect x="48" y="44" width="32" height="16" rx="2" fill="#e8dcc8"/>
+  <!-- haste de contato da porta -->
+  <rect x="60" y="24" width="8" height="20" rx="2" fill="#e8dcc8"/>
+  <!-- linhas de campo no canal -->
+  <line x1="54" y1="70" x2="74" y2="70" stroke="#8a7a68" stroke-width="1.5"/>
+  <line x1="54" y1="74" x2="74" y2="74" stroke="#8a7a68" stroke-width="1.5"/>
+</svg>

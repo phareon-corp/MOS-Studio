@@ -1,0 +1,32 @@
+Corrige os tipos de tempo em misc/cpu.c.
+
+O arquivo redeclara ``extern long time();`` e guarda o resultado num
+``long``, que depois vai para ``ctime()``. No Linux de 64 bits isso funciona
+por acaso — ``long`` e ``time_t`` têm o mesmo tamanho. No Windows de 64 bits
+``long`` tem 32 bits e ``time_t`` tem 64, e os dois usos viram erro de tipo:
+
+    error: conflicting types for 'time'; have 'long int()'
+
+A declaração é redundante (``<time.h>`` já está incluído) e o tipo certo da
+variável é ``time_t``. A correção vale nos dois sistemas.
+
+--- a/src/misc/cpu.c
++++ b/src/misc/cpu.c
+@@ -16,8 +16,6 @@
+ #include "global.h"
+ #include "shell.h"
+ 
+-extern long time();
+-
+ 
+ /************************************************************************
+  *									*
+@@ -31,7 +29,7 @@
+ {
+     char *f;
+     int on;
+-    long i;
++    time_t i;
+ 
+     f  = get_string( param, "cpufile" );
+     on = get_bool( param, "log" );

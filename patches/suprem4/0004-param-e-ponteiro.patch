@@ -1,0 +1,751 @@
+Trata o segundo argumento das funções de carta como ponteiro, não como int.
+
+ESTE É O PATCH QUE FAZ O MOTOR RODAR NO WINDOWS.
+
+O parser chama cada comando assim (``shell/do_action.c``):
+
+    command[index].func( par, cards[command[index].param] );
+
+O segundo argumento é um ``struct par_str *`` — a lista de parâmetros da
+carta. Mas quase toda função de carta o recebe declarado ``int param``, e
+um comentário no ``mesh/rect.c`` até o chama de "magic cookie for the
+parser". Como as funções são chamadas por um ponteiro sem protótipo
+(``PTR_FUNC``), o compilador nunca viu a incompatibilidade.
+
+No Linux de 64 bits isso funciona por sorte: o binário não é PIE, os dados
+estáticos e o heap do ``brk`` ficam nos primeiros megabytes do espaço de
+endereços, e os 32 bits de cima do ponteiro são todos zero. Truncar não
+perde nada.
+
+No Windows de 64 bits o heap fica acima de 4 GB — endereços da forma
+0x000001D8`43089900. O truncamento joga fora a metade de cima, e a primeira
+função que usa a lista morre. Foi exatamente o que aconteceu, medido na
+máquina virtual: o motor lia o arquivo de chaves, entrava no ``modelrc`` e
+caía em ``is_specified`` com
+
+    EXCECAO codigo=0xC0000005 (violacao de acesso, leitura)
+    endereco=0x8371A300   <- os 32 bits de baixo de um ponteiro do heap
+
+sem nenhuma mensagem, porque a saída ainda estava no buffer. Debaixo do
+wine o mesmo binário passava: o heap do wine também cai embaixo de 4 GB, o
+que torna o bug invisível ali. Só a máquina virtual o mostrou.
+
+A correção é trocar o tipo nas 58 declarações, em 48 arquivos: ``int
+param`` passa a ``struct par_str *param``. Nenhuma linha de cálculo muda —
+o valor que trafega é o mesmo, só deixa de ser cortado. Vale igual no
+Linux, onde o ponteiro antes cabia por acaso.
+
+Uma declaração adiantada ``struct par_str;`` entra no ``include/global.h``
+(e, local, nos dois arquivos que não o incluem: ``misc/man.c`` e
+``oxide/FEbc.c``), porque vários desses arquivos só repassam o ponteiro e
+nunca precisaram ver a definição, que mora no ``include/check.h``.
+
+O ``int param`` do ``struct command_table``, em ``include/shell.h``, fica
+como está: ali é um inteiro de verdade, o índice da carta na tabela.
+
+Conferido depois da troca, compilando para Windows com
+``-Wint-conversion -Wpointer-to-int-cast -Wint-to-pointer-cast
+-Wincompatible-pointer-types``: nenhum aviso de conversão entre inteiro e
+ponteiro sobra em todo o fonte.
+
+diff -urN base/device/contact.c novo/device/contact.c
+--- a/src/device/contact.c	2026-10-14 21:48:07.570291186 -0300
++++ b/src/device/contact.c	2026-10-14 21:48:07.604093749 -0300
+@@ -30,7 +30,7 @@
+  ************************************************************************/
+ contact( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     char *str;
+     int num = -1;
+diff -urN base/device/device.c novo/device/device.c
+--- a/src/device/device.c	2026-10-14 21:48:07.570445250 -0300
++++ b/src/device/device.c	2026-10-14 21:48:07.604547503 -0300
+@@ -153,7 +153,7 @@
+  ************************************************************************/
+ device( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     double *area;
+     int tfl, tfm;
+diff -urN base/device/Electron.c novo/device/Electron.c
+--- a/src/device/Electron.c	2026-10-14 21:48:07.570136712 -0300
++++ b/src/device/Electron.c	2026-10-14 21:48:07.603762808 -0300
+@@ -119,7 +119,7 @@
+  ************************************************************************/
+ electron( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat, mat2 = -1;
+ 
+diff -urN base/device/Hole.c novo/device/Hole.c
+--- a/src/device/Hole.c	2026-10-14 21:48:07.570188751 -0300
++++ b/src/device/Hole.c	2026-10-14 21:48:07.603852139 -0300
+@@ -117,7 +117,7 @@
+  ************************************************************************/
+ hole( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat, mat2 = -1;
+ 
+diff -urN base/device/Psi.c novo/device/Psi.c
+--- a/src/device/Psi.c	2026-10-14 21:48:07.570223117 -0300
++++ b/src/device/Psi.c	2026-10-14 21:48:07.603928424 -0300
+@@ -80,7 +80,7 @@
+  ************************************************************************/
+ psi_card( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat;
+     int mat2 = -1;
+diff -urN base/diffuse/Antimony.c novo/diffuse/Antimony.c
+--- a/src/diffuse/Antimony.c	2026-10-14 21:48:07.570501918 -0300
++++ b/src/diffuse/Antimony.c	2026-10-14 21:48:07.604736473 -0300
+@@ -285,7 +285,7 @@
+  ************************************************************************/
+ antimony( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat;
+     int mat2 = -1;
+diff -urN base/diffuse/Arsenic.c novo/diffuse/Arsenic.c
+--- a/src/diffuse/Arsenic.c	2026-10-14 21:48:07.570558626 -0300
++++ b/src/diffuse/Arsenic.c	2026-10-14 21:48:07.604967263 -0300
+@@ -387,7 +387,7 @@
+  ************************************************************************/
+ arsenic( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat;
+     int mat2 = -1;
+diff -urN base/diffuse/Beryllium.c novo/diffuse/Beryllium.c
+--- a/src/diffuse/Beryllium.c	2026-10-14 21:48:07.570607169 -0300
++++ b/src/diffuse/Beryllium.c	2026-10-14 21:48:07.605175169 -0300
+@@ -300,7 +300,7 @@
+  ************************************************************************/
+ beryllium( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat;
+     int mat2 = -1;
+diff -urN base/diffuse/Boron.c novo/diffuse/Boron.c
+--- a/src/diffuse/Boron.c	2026-10-14 21:48:07.570648788 -0300
++++ b/src/diffuse/Boron.c	2026-10-14 21:48:07.605367957 -0300
+@@ -325,7 +325,7 @@
+  ************************************************************************/
+ boron( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat;
+     int mat2 = -1;
+diff -urN base/diffuse/Carbon.c novo/diffuse/Carbon.c
+--- a/src/diffuse/Carbon.c	2026-10-14 21:48:07.570690247 -0300
++++ b/src/diffuse/Carbon.c	2026-10-14 21:48:07.605555694 -0300
+@@ -300,7 +300,7 @@
+  ************************************************************************/
+ carbon( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat;
+     int mat2 = -1;
+diff -urN base/diffuse/Cesium.c novo/diffuse/Cesium.c
+--- a/src/diffuse/Cesium.c	2026-10-14 21:48:07.570728400 -0300
++++ b/src/diffuse/Cesium.c	2026-10-14 21:48:07.605685201 -0300
+@@ -175,7 +175,7 @@
+  ************************************************************************/
+ cesium( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int i, j;
+     int tmpfl, imp_flag, gro_flag;
+diff -urN base/diffuse/diffuse.c novo/diffuse/diffuse.c
+--- a/src/diffuse/diffuse.c	2026-10-14 21:48:07.571309146 -0300
++++ b/src/diffuse/diffuse.c	2026-10-14 21:48:07.609103604 -0300
+@@ -39,7 +39,7 @@
+  *  Original:	MEL	1/85						*
+  *									*
+  ************************************************************************/
+-int diffuse( char *par, int param )
++int diffuse( char *par, struct par_str *param )
+ {
+     float time, temp, cs;
+     struct tms before, after;
+diff -urN base/diffuse/Generic.c novo/diffuse/Generic.c
+--- a/src/diffuse/Generic.c	2026-10-14 21:48:07.570774107 -0300
++++ b/src/diffuse/Generic.c	2026-10-14 21:48:07.605899028 -0300
+@@ -328,7 +328,7 @@
+  ************************************************************************/
+ generic( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat;
+     int mat2 = -1;
+diff -urN base/diffuse/Germanium.c novo/diffuse/Germanium.c
+--- a/src/diffuse/Germanium.c	2026-10-14 21:48:07.570814113 -0300
++++ b/src/diffuse/Germanium.c	2026-10-14 21:48:07.606113146 -0300
+@@ -300,7 +300,7 @@
+  ************************************************************************/
+ germanium( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat;
+     int mat2 = -1;
+diff -urN base/diffuse/Gold.c novo/diffuse/Gold.c
+--- a/src/diffuse/Gold.c	2026-10-14 21:48:07.570852616 -0300
++++ b/src/diffuse/Gold.c	2026-10-14 21:48:07.606254376 -0300
+@@ -175,7 +175,7 @@
+  ************************************************************************/
+ gold( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int i, j;
+     int tmpfl, imp_flag, gro_flag;
+diff -urN base/diffuse/Interst.c novo/diffuse/Interst.c
+--- a/src/diffuse/Interst.c	2026-10-14 21:48:07.570897031 -0300
++++ b/src/diffuse/Interst.c	2026-10-14 21:48:07.606629500 -0300
+@@ -492,7 +492,7 @@
+  ************************************************************************/
+ interstitial( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     int mat, mat2 = -1;
+     int imp = -1;
+diff -urN base/diffuse/Magnesium.c novo/diffuse/Magnesium.c
+--- a/src/diffuse/Magnesium.c	2026-10-14 21:48:07.570929763 -0300
++++ b/src/diffuse/Magnesium.c	2026-10-14 21:48:07.606841153 -0300
+@@ -300,7 +300,7 @@
+  ************************************************************************/
+ magnesium( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat;
+     int mat2 = -1;
+diff -urN base/diffuse/Phosphorus.c novo/diffuse/Phosphorus.c
+--- a/src/diffuse/Phosphorus.c	2026-10-14 21:48:07.570959590 -0300
++++ b/src/diffuse/Phosphorus.c	2026-10-14 21:48:07.607058147 -0300
+@@ -311,7 +311,7 @@
+  ************************************************************************/
+ phosphorus( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat;
+     int mat2 = -1;
+diff -urN base/diffuse/Selenium.c novo/diffuse/Selenium.c
+--- a/src/diffuse/Selenium.c	2026-10-14 21:48:07.570996531 -0300
++++ b/src/diffuse/Selenium.c	2026-10-14 21:48:07.607264269 -0300
+@@ -301,7 +301,7 @@
+  ************************************************************************/
+ selenium( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat;
+     int mat2 = -1;
+diff -urN base/diffuse/Silicon.c novo/diffuse/Silicon.c
+--- a/src/diffuse/Silicon.c	2026-10-14 21:48:07.571041476 -0300
++++ b/src/diffuse/Silicon.c	2026-10-14 21:48:07.607459491 -0300
+@@ -300,7 +300,7 @@
+  ************************************************************************/
+ silicon( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat;
+     int mat2 = -1;
+diff -urN base/diffuse/Tin.c novo/diffuse/Tin.c
+--- a/src/diffuse/Tin.c	2026-10-14 21:48:07.571072084 -0300
++++ b/src/diffuse/Tin.c	2026-10-14 21:48:07.607646227 -0300
+@@ -300,7 +300,7 @@
+  ************************************************************************/
+ tin( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat;
+     int mat2 = -1;
+diff -urN base/diffuse/Trap.c novo/diffuse/Trap.c
+--- a/src/diffuse/Trap.c	2026-10-14 21:48:07.571098515 -0300
++++ b/src/diffuse/Trap.c	2026-10-14 21:48:07.607710950 -0300
+@@ -48,7 +48,7 @@
+  ************************************************************************/
+ trap(par, param)
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     int mat;
+ 
+diff -urN base/diffuse/Vacancy.c novo/diffuse/Vacancy.c
+--- a/src/diffuse/Vacancy.c	2026-10-14 21:48:07.571132670 -0300
++++ b/src/diffuse/Vacancy.c	2026-10-14 21:48:07.608055577 -0300
+@@ -422,7 +422,7 @@
+  ************************************************************************/
+ vacancy( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     int mat, mat2 = -1;
+     int imp = -1;
+diff -urN base/diffuse/Zinc.c novo/diffuse/Zinc.c
+--- a/src/diffuse/Zinc.c	2026-10-14 21:48:07.571163899 -0300
++++ b/src/diffuse/Zinc.c	2026-10-14 21:48:07.608259005 -0300
+@@ -300,7 +300,7 @@
+  ************************************************************************/
+ zinc( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ { 
+     int mat;
+     int mat2 = -1;
+diff -urN base/imagetool/image_write.c novo/imagetool/image_write.c
+--- a/src/imagetool/image_write.c	2026-10-14 21:48:07.572072250 -0300
++++ b/src/imagetool/image_write.c	2026-10-14 21:48:07.612417728 -0300
+@@ -38,7 +38,7 @@
+ image_write( filename, par, param )
+ char *filename;
+ char *par;
+-int param;
++struct par_str *param;
+ {
+ 
+ 
+diff -urN base/implant/implant.c novo/implant/implant.c
+--- a/src/implant/implant.c	2026-10-14 21:48:07.572425192 -0300
++++ b/src/implant/implant.c	2026-10-14 21:48:07.613254212 -0300
+@@ -38,7 +38,7 @@
+  *  Original:	MEL	1/85						*
+  *									*
+  ************************************************************************/
+-int implant( char * par, int param )
++int implant( char * par, struct par_str *param )
+ {
+     register int i, j;
+     int imp, impa, ion, sol;
+@@ -151,7 +151,7 @@
+  *  Mod 1:	SEH	02/92  Add GaAs elements			*
+  *									*
+  ************************************************************************/
+-int imp_select( int param, int *imp, int *ion )
++int imp_select( struct par_str *param, int *imp, int *ion )
+ {
+     int	 i, gaas, si;
+ 
+diff -urN base/include/global.h novo/include/global.h
+--- a/src/include/global.h	2026-10-14 21:48:07.572823241 -0300
++++ b/src/include/global.h	2026-10-14 21:48:07.624600479 -0300
+@@ -60,6 +60,11 @@
+ 
+ extern int get_bool();
+ extern int get_int();
++/* O segundo argumento de toda funcao de carta e um ponteiro para a lista
++ * de parametros que o parser montou. A declaracao adiantada basta: os
++ * arquivos que so passam o ponteiro adiante nao precisam da definicao. */
++struct par_str;
++
+ extern float get_float();
+ extern char *get_string();
+ #define Fetch( V, S ) if (is_specified(param,S)) V=get_float(param,S)
+diff -urN base/main.c novo/main.c
+--- a/src/main.c	2026-10-14 21:48:07.576548438 -0300
++++ b/src/main.c	2026-10-14 21:48:07.613550366 -0300
+@@ -206,7 +206,7 @@
+  ************************************************************************/
+ mode_cmd( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+ #   define CHOSEN(x) (is_specified( param, x) && get_bool( param, x))
+ 
+diff -urN base/math/symb.c novo/math/symb.c
+--- a/src/math/symb.c	2026-10-14 21:48:07.573819118 -0300
++++ b/src/math/symb.c	2026-10-14 21:48:07.614462424 -0300
+@@ -54,7 +54,7 @@
+  ************************************************************************/
+ method( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     char *s;
+     float tmpf;
+diff -urN base/mesh/initialize.c novo/mesh/initialize.c
+--- a/src/mesh/initialize.c	2026-10-14 21:48:07.573938756 -0300
++++ b/src/mesh/initialize.c	2026-10-14 21:48:07.614727269 -0300
+@@ -37,7 +37,7 @@
+  ************************************************************************/
+ initialize( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     int ier;
+     int lflip;
+diff -urN base/mesh/profile.c novo/mesh/profile.c
+--- a/src/mesh/profile.c	2026-10-14 21:48:07.574019230 -0300
++++ b/src/mesh/profile.c	2026-10-14 21:48:07.615055303 -0300
+@@ -40,7 +40,7 @@
+  ************************************************************************/
+ profile( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     register int i;
+     char *infile;
+diff -urN base/mesh/rect.c novo/mesh/rect.c
+--- a/src/mesh/rect.c	2026-10-14 21:48:07.574051160 -0300
++++ b/src/mesh/rect.c	2026-10-14 21:48:07.615297755 -0300
+@@ -102,7 +102,7 @@
+  *----------------------------------------------------------------------*/
+ rline (par, param)
+     char *par;
+-    int param;
++    struct par_str *param;
+ {
+     int i, j, dim, nu;
+     double lloc, spa;
+@@ -452,7 +452,7 @@
+ 
+ rregion(par, param)
+     char *par;
+-    int param;
++    struct par_str *param;
+ {
+     int mater;
+ 
+@@ -493,7 +493,7 @@
+  *----------------------------------------------------------------------*/
+ redge(par, param)
+     char *par;
+-    int param;
++    struct par_str *param;
+ {
+     /* There is a new edge */
+     nuj++;
+@@ -516,7 +516,7 @@
+  *----------------------------------------------------------------------*/
+ char *names[6] = {"xlo", "xhi", "ylo", "yhi", "zlo", "zhi"};
+ read_bound (param, where, what)
+-    int param;		/* Magic cookie for the parser */
++    struct par_str *param;		/* Magic cookie for the parser */
+     int where[MAXBNDS];	/* Where to stuff this good info */
+     int what;		/* 1 for regions, 0 for edges */
+ {
+@@ -544,7 +544,7 @@
+  * Look up a name in the user tags field.
+  *----------------------------------------------------------------------*/
+ tag_look( param, name, dim)
+-    int param;		/* Magic cookie for the parser */
++    struct par_str *param;		/* Magic cookie for the parser */
+     char *name;		/* Name of desired parameter */
+     int dim;		/* Which tag dimension to look up */
+ {
+diff -urN base/mesh/structure.c novo/mesh/structure.c
+--- a/src/mesh/structure.c	2026-10-14 21:48:07.574144478 -0300
++++ b/src/mesh/structure.c	2026-10-14 21:48:07.615534757 -0300
+@@ -62,7 +62,7 @@
+  ************************************************************************/
+ structure( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     int ier;
+     int lflip;
+diff -urN base/misc/cpu.c novo/misc/cpu.c
+--- a/src/misc/cpu.c	2026-10-14 21:48:07.574403101 -0300
++++ b/src/misc/cpu.c	2026-10-14 21:48:07.615633224 -0300
+@@ -25,7 +25,7 @@
+  *	Original :	Mark E. Law	Oct, 1984
+  *									*
+  ************************************************************************/
+-int cpu(char *par, int param )
++int cpu(char *par, struct par_str *param )
+ {
+     char *f;
+     int on;
+diff -urN base/misc/echo.c novo/misc/echo.c
+--- a/src/misc/echo.c	2026-10-14 21:48:07.574209282 -0300
++++ b/src/misc/echo.c	2026-10-14 21:48:07.615697086 -0300
+@@ -25,7 +25,7 @@
+  ************************************************************************/
+ echo( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     char tmp[512];
+     char *err;
+@@ -107,7 +107,7 @@
+  ************************************************************************/
+ user_print( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     char *argv[50];
+     char tmp[512];
+diff -urN base/misc/man.c novo/misc/man.c
+--- a/src/misc/man.c	2026-10-14 21:48:07.574257273 -0300
++++ b/src/misc/man.c	2026-10-14 21:48:07.624639874 -0300
+@@ -17,6 +17,9 @@
+ #include <string.h>
+ #include "sysdep.h"
+ 
++/* ver a nota em include/global.h */
++struct par_str;
++
+ /************************************************************************
+  *									*
+  *	man( par, param ) - this routine reads the first thing 		*
+@@ -31,7 +34,7 @@
+  ************************************************************************/
+ man( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     FILE *help, *more;
+     char *s;
+diff -urN base/oxide/coeffox.c novo/oxide/coeffox.c
+--- a/src/oxide/coeffox.c	2026-10-14 21:48:07.574593484 -0300
++++ b/src/oxide/coeffox.c	2026-10-14 21:48:07.617184300 -0300
+@@ -58,7 +58,7 @@
+ 
+ coeffox (par, param)
+     char *par;
+-    int param;
++    struct par_str *param;
+ {
+     int ornt=(-1);	/* the orientation for which the coefficient applies */
+     int spes;		/* which oxidizing species we mean */
+@@ -264,7 +264,7 @@
+  * Read an array of floats from a string.
+  *----------------------------------------------------------------------*/
+ get_array( param, name, fla, nfla)
+-    int param;			/* The mysterious param factor. */
++    struct par_str *param;			/* The mysterious param factor. */
+     char *name;			/* The name of the parameter. */
+     float **fla;			/* The array of floats. */
+     int *nfla;			/* Input: how many required. Output: number used */
+diff -urN base/oxide/FEbc.c novo/oxide/FEbc.c
+--- a/src/oxide/FEbc.c	2026-10-14 21:48:07.574434130 -0300
++++ b/src/oxide/FEbc.c	2026-10-14 21:48:07.624709818 -0300
+@@ -19,6 +19,9 @@
+ #include "geom.h"
+ #include "FEgeom.h"
+ #include "material.h"
++
++/* ver a nota em include/global.h */
++struct par_str;
+ #define hypot(x,y) sqrt((x)*(x)+(y)*(y))
+ 
+ #define X 0
+@@ -83,7 +86,7 @@
+ FEbc( temp, par, param)
+     float temp;
+     char *par;
+-    int param;
++    struct par_str *param;
+ {
+     clear_bc();
+     FEdirichlet( par, param);
+@@ -153,7 +156,7 @@
+  *----------------------------------------------------------------------*/
+ FEdirichlet( par, param)
+     char *par;
+-    int param;
++    struct par_str *param;
+ {
+     int ie, j, i, k, v, c;
+     FEelt_typ *ae; FEnd_typ *an;
+diff -urN base/oxide/mater.c novo/oxide/mater.c
+--- a/src/oxide/mater.c	2026-10-14 21:48:07.574674538 -0300
++++ b/src/oxide/mater.c	2026-10-14 21:48:07.617657381 -0300
+@@ -32,7 +32,7 @@
+  ************************************************************************/
+ c_mater( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     int mat = -1;
+     int wd = -1;
+@@ -106,7 +106,7 @@
+  *----------------------------------------------------------------------*/
+ ChosenMater( par, param, other)
+      char *par;
+-     int param;
++     struct par_str *param;
+      int other;			/* 1 for /mater, 0 for mater */
+ {
+     int i, offset = other? 0 : 1;
+@@ -117,7 +117,7 @@
+ }
+ 
+ ChosenBC( par, param, other)
+-     char *par; int param; int other;
++     char *par; struct par_str *param; int other;
+ {
+     int i, offset = other? 0:1;
+     for (i = 0; i <3; i++)
+diff -urN base/oxide/viscous.c novo/oxide/viscous.c
+--- a/src/oxide/viscous.c	2026-10-14 21:48:07.574835334 -0300
++++ b/src/oxide/viscous.c	2026-10-14 21:48:07.618938482 -0300
+@@ -92,7 +92,7 @@
+  *----------------------------------------------------------------------*/
+ stress_analysis( par, param)
+      char *par;
+-     int param;
++     struct par_str *param;
+ {
+     float temp1=1000, temp2=1000;
+     int element;
+diff -urN base/plot/contour.c novo/plot/contour.c
+--- a/src/plot/contour.c	2026-10-14 21:48:07.574868167 -0300
++++ b/src/plot/contour.c	2026-10-14 21:48:07.619031749 -0300
+@@ -40,7 +40,7 @@
+  ************************************************************************/
+ contour( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     float value;
+     float arr[MAXVRT][3], p[2][3];
+diff -urN base/plot/label.c novo/plot/label.c
+--- a/src/plot/label.c	2026-10-14 21:48:07.574940595 -0300
++++ b/src/plot/label.c	2026-10-14 21:48:07.619283790 -0300
+@@ -35,7 +35,7 @@
+  ************************************************************************/
+ draw_lab( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     char *label;
+     float x,y;
+diff -urN base/plot/option.c novo/plot/option.c
+--- a/src/plot/option.c	2026-10-14 21:48:07.575021449 -0300
++++ b/src/plot/option.c	2026-10-14 21:48:07.619489762 -0300
+@@ -42,7 +42,7 @@
+  ************************************************************************/
+ option( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+ 
+ #   define CHOSEN(x) (is_specified( param, x) && get_bool( param, x))
+diff -urN base/plot/plot_1d.c novo/plot/plot_1d.c
+--- a/src/plot/plot_1d.c	2026-10-14 21:48:07.575062998 -0300
++++ b/src/plot/plot_1d.c	2026-10-14 21:48:07.619643104 -0300
+@@ -36,7 +36,7 @@
+  ************************************************************************/
+ plot_1d( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     int boundary;
+     int line_type;
+diff -urN base/plot/plot_2d.c novo/plot/plot_2d.c
+--- a/src/plot/plot_2d.c	2026-10-14 21:48:07.575087064 -0300
++++ b/src/plot/plot_2d.c	2026-10-14 21:48:07.619826985 -0300
+@@ -45,7 +45,7 @@
+  *  Original :	MEL, CSR, MRP	11, 1984 (modeled on pisces2)		*
+  *									*
+  ************************************************************************/
+-int plot_2d( char *par, int param )
++int plot_2d( char *par, struct par_str *param )
+ {
+     int i;
+     int boundary;
+diff -urN base/plot/print_1d.c novo/plot/print_1d.c
+--- a/src/plot/print_1d.c	2026-10-14 21:48:07.575111350 -0300
++++ b/src/plot/print_1d.c	2026-10-14 21:48:07.619945951 -0300
+@@ -37,7 +37,7 @@
+  ************************************************************************/
+ print_1d(par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     float x, xmin, xmax, ymin, ymax;
+     float y;
+diff -urN base/plot/select.c novo/plot/select.c
+--- a/src/plot/select.c	2026-10-14 21:48:07.575133452 -0300
++++ b/src/plot/select.c	2026-10-14 21:48:07.620016736 -0300
+@@ -39,7 +39,7 @@
+  ************************************************************************/
+ sel_var( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     char *zstr;
+     struct vec_str *zexp;
+diff -urN base/refine/deposit.c novo/refine/deposit.c
+--- a/src/refine/deposit.c	2026-10-14 21:48:07.575242500 -0300
++++ b/src/refine/deposit.c	2026-10-14 21:48:07.620376452 -0300
+@@ -40,7 +40,7 @@
+  ************************************************************************/
+ user_deposit( par, param )
+ char *par;
+-int param;
++struct par_str *param;
+ {
+     register int mater, ndiv, i;
+     double thick;
+diff -urN base/refine/etch.c novo/refine/etch.c
+--- a/src/refine/etch.c	2026-10-14 21:48:07.575270553 -0300
++++ b/src/refine/etch.c	2026-10-14 21:48:07.620541636 -0300
+@@ -48,7 +48,7 @@
+  *----------------------------------------------------------------------*/
+ user_etch( par, param)
+     char *par;
+-    int param;
++    struct par_str *param;
+ {
+     register int i;
+     static int mater_save;

@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""Roda um comando do PowerShell dentro da VM Windows de testes.
+
+Uso:
+    ./vm-run 'Get-ChildItem C:\\'
+    ./vm-run -f script.ps1
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import vmagente
+
+
+def main() -> int:
+    argumentos = sys.argv[1:]
+    if not argumentos:
+        print(__doc__)
+        return 2
+    if argumentos[0] == "-f":
+        if len(argumentos) != 2:
+            print(__doc__)
+            return 2
+        comando = Path(argumentos[1]).read_text()
+    else:
+        comando = " ".join(argumentos)
+
+    vmagente.ligar()
+    sys.stdout.write(vmagente.powershell(comando))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

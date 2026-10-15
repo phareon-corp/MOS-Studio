@@ -1,0 +1,105 @@
+================================================================
+ MOS-Studio  —  compilar e instalar os motores nativos
+ SyncField Corporation
+================================================================
+
+LEIA ANTES
+----------
+Este arquivo trata APENAS de obter e compilar os binarios Fortran dos
+motores. Ele e' anterior a migracao para PySide6 e fala do 'suprem3.py',
+que nao e' mais o programa:
+
+  - Para instalar o MOS-Studio, use ./instalar.sh (veja o README.md).
+  - Para rodar sem instalar:  python -m mos_studio
+  - O DOSBox saiu inteiro. Os motores sao ELF x86-64 nativos e rodam
+    direto; nao existe mais fallback nem indicador de motor.
+  - O 'suprem3.py' continua no repositorio so como referencia e base dos
+    testes de paridade (tests/legacy.py).
+
+O que vale aqui e' a partir de "ESTRUTURA ESPERADA": onde as pastas dos
+binarios precisam ficar e como recompila-los.
+
+O SUPREM-IV (motor 2-D)
+-----------------------
+E' compilado por um script proprio, que faz tudo do zero:
+
+    ./build_suprem4.sh
+
+Ele clona o fonte, aplica o patch obrigatorio de shell/list.c (um strcpy
+com regioes sobrepostas que a glibc moderna quebra em silencio), compila
+em 64 bits so a parte em C, gera o suprem.uk com o keyread e instala em
+suprem4-run/ com data/, help/ e examples/. No fim roda o exam1 como teste
+de fumaca.
+
+Nao precisa de gfortran nem de bibliotecas de 32 bits. Nao ha camada
+grafica: plot.2d e contour sao taloes vazios, e os desenhos do MOS-Studio
+saem das tabelas do print.1d. Ver docs/adr/0002-suprem-iv-2d.md.
+
+ESTRUTURA ESPERADA
+------------------
+Coloque a pasta dos binarios nativos ao lado do suprem3.py, com um destes
+nomes (a primeira que existir e' usada):
+    suprem-run/            <-- recomendado
+    suprem_native/suprem-run/
+    native/suprem-run/
+
+A pasta deve conter:
+    setup  genii  sup3            (Linux)   ou
+    setup.exe genii.exe sup3.exe  (Windows)
+    S3cof0  S3uky0                (coeficientes inicializados)
+    S3err0 S3fky0 S3ibo0 ...      (dados)
+
+================================================================
+LINUX (Fedora) — uso imediato
+================================================================
+A pasta 'suprem-run' deste pacote ja vem compilada e inicializada.
+  1. Copie 'suprem-run/' para a pasta do Studio.
+  2. cd suprem-run && ./INICIALIZAR.sh      (ajusta caminhos; 1x)
+  3. Rode o Studio:  python3 suprem3.py
+Se os binarios nao rodarem (versao de libgfortran/glibc), recompile:
+  sudo dnf install gcc gcc-gfortran make tar
+  ./build_suprem.sh /caminho/relB_8628_tar.Z
+Isso recria 'suprem_build/Release/run'; copie/renomeie para 'suprem-run'.
+
+================================================================
+WINDOWS — compilar os binarios nativos (MSYS2 / MinGW)
+================================================================
+Os binarios Linux NAO rodam no Windows; e' preciso compilar uma vez.
+  1. Instale o MSYS2 (https://www.msys2.org).
+  2. No terminal "MSYS2 MINGW64":
+        pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-gcc-fortran make tar
+  3. Rode o mesmo script de build (ele detecta o Windows e gera .exe):
+        ./build_suprem.sh /c/caminho/relB_8628_tar.Z
+  4. Copie a pasta gerada 'suprem_build/Release/run' para a pasta do
+     Studio com o nome 'suprem-run' (tera setup.exe, genii.exe, sup3.exe).
+  5. Rode o Studio:  python suprem3.py
+Observacao: ao usar os binarios MinGW fora do MSYS2, deixe as DLLs do
+runtime (libgfortran-5.dll, libgcc_s_seh-1.dll, libquadmath-0.dll,
+libwinpthread-1.dll) na mesma pasta dos .exe (copie de
+C:\msys64\mingw64\bin), ou rode o Studio de dentro do MSYS2.
+
+================================================================
+COMO FUNCIONA POR DENTRO
+================================================================
+O backend nativo (run_suprem_native no suprem3.py) faz, em pasta
+temporaria, exatamente o que o script 'suprem' de Stanford faz:
+  - define variaveis de ambiente apontando para os dados
+    (S3cof0 S3err0 S3fky0 S3uky0 S3ibo0 S3ibo1 S3ibf0 S3iph0 S3ias0 S3isb0)
+  - S3prs0 = arquivo "parsed" (RELATIVO; nomes absolutos quebram o motor)
+  - executa:  setup INPUT.IN OUTPUT.OUT
+              genii INPUT.IN OUTPUT.OUT RUNINFO.TXT
+              sup3  OUTPUT.OUT RUNINFO.TXT
+  - coleta OUTPUT.OUT (e quaisquer .OUT/.TXT de PRINT) no mesmo formato
+    que o backend DOSBox, para a aba de Resultados.
+
+LIMITACAO CONHECIDA
+-------------------
+Curvas finas de perfil profundidade-concentracao usam o comando PLOT, que
+depende da biblioteca grafica Plotcap (desabilitada no modo headless). As
+tabelas de camadas, dopantes integrados e PROFUNDIDADES DE JUNCAO sao
+geradas normalmente pelo PRINT. Para curvas, use 'Print Layers ...' (resumo)
+ou rode o PLOT no ambiente grafico do SUPREM separadamente.
+
+Dica de deck: inclua "Layers" no PRINT (ex.: Print Layers Net Chemical)
+para garantir a tabela de camadas/juncoes na saida.
+================================================================

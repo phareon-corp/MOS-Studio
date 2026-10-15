@@ -1,0 +1,25 @@
+Faz o ``main`` devolver zero explicitamente.
+
+O ``main.c`` é C de 1993: ``main`` tem tipo implícito ``int`` e termina sem
+nenhum ``return``. O que o processo devolve ao sistema é, em C89, o que
+sobrou no registrador de retorno — indefinido.
+
+No Linux sobrava zero e ninguém notou em trinta anos. No Windows sobra
+outra coisa: medido na máquina virtual, o mesmo deck que sai com 0 no Linux
+saía com 1. O MOS-Studio trata código diferente de zero como falha da
+simulação (``core/suprem4.py``), de modo que toda execução no Windows seria
+recusada com uma mensagem de erro inventada, apesar de a saída estar certa
+e idêntica à do Linux.
+
+Uma linha resolve, nos dois sistemas.
+
+--- a/src/main.c
++++ b/src/main.c
+@@ -189,6 +189,7 @@
+ 
+     xgUpdate(1);
+ 
++    return 0;
+ }
+ 
+ 

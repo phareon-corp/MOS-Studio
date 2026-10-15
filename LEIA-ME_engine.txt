@@ -1,0 +1,79 @@
+================================================================
+ SUPREM-III NATIVO (fonte Stanford, Release B rev. 8628)
+ SyncField Corporation
+================================================================
+
+O QUE E ISTO
+------------
+Em vez de depender do SUPREM3.EXE do DOS (que estava corrompido no
+disquete drive.flp), o codigo-fonte original de Stanford foi compilado
+NATIVAMENTE para Linux. Nao precisa de DOSBox. Uma simulacao real de
+diodo foi validada (estrutura de camadas + profundidades de juncao).
+
+CONTEUDO
+--------
+  suprem-run/        Pasta pronta para uso (binarios + dados + coeficientes)
+     setup genii sup3   binarios compilados
+     suprem             script que roda setup -> genii -> sup3
+     S3cof0 S3uky0      coeficientes/chave ja inicializados
+     S3err0 S3fky0 ...  arquivos de dados
+     INICIALIZAR.sh     reajusta caminhos e reinicializa (rode 1x apos copiar)
+     examples/          decks de exemplo de Stanford
+  build_suprem.sh    Recompila tudo do .Z no SEU Fedora (reprodutivel)
+  suprem_native.py   Backend nativo para o SUPREM-III Studio (sem DOSBox)
+
+USO DIRETO (linha de comando)
+-----------------------------
+  cd suprem-run
+  ./INICIALIZAR.sh                 # so na primeira vez (ajusta o caminho)
+  ./suprem  entrada.in  saida.out  # roda a simulacao
+
+PORTABILIDADE / RECOMPILAR
+--------------------------
+Os binarios dependem de libgfortran.so.5 (no Fedora: pacote gcc-gfortran).
+Se eles nao rodarem (erro de versao de glibc/libgfortran), recompile no
+seu proprio Fedora:
+  sudo dnf install gcc gcc-gfortran make tar
+  ./build_suprem.sh /caminho/relB_8628_tar.Z
+Isso gera suprem_build/Release/run, igual ao bundle.
+
+CORRECOES APLICADAS AO FONTE (para o gfortran moderno)
+------------------------------------------------------
+1. Continuacao '&' na coluna 1 (extensao f77 Berkeley) -> coluna 6
+   (forma fixa padrao). 324 linhas.
+2. 'implicit undefined(a-z)' -> 'implicit none'. 55 arquivos.
+3. OPEN(..., FILE=, STATUS='SCRATCH'): o gfortran proibe FILE= com
+   scratch. Era a causa do "Unidentified error found" do genii.
+   3 arquivos opnfl-L.f.
+4. Shim em C para a intrinseca BSD fdate() (usada pelo setup).
+5. Stubs no-op para a biblioteca grafica Plotcap (so usada pelo
+   comando PLOT, que nao usamos no fluxo headless).
+
+COMO O NATIVO EXECUTA (diferente do port DOS)
+---------------------------------------------
+O port DOS/EPUSP usava s3inicio.tmp + EXEPACK. O fonte UNIX usa:
+ - variaveis de ambiente apontando para os dados:
+     S3cof0 S3err0 S3fky0 S3uky0 S3ibo0 S3ibo1 S3ibf0 S3iph0 S3ias0 S3isb0
+ - S3prs0 = arquivo "parsed" (temporario) gerado pelo genii e lido pelo sup3
+ - sequencia:  setup <in> <out> ; genii <in> <out> <inf> ; sup3 <out> <inf>
+O script 'suprem' e o suprem_native.py ja cuidam disso.
+
+INTEGRAR AO SUPREM-III STUDIO (opcional)
+----------------------------------------
+No Linux, use suprem_native.run_suprem_native() no lugar do run_suprem
+baseado em DOSBox. A assinatura e a mesma:
+
+    from suprem_native import run_suprem_native, find_run_dir, check_run_dir
+
+    run_dir = find_run_dir("caminho/para/suprem-run")  # ou deixe achar sozinho
+    run_suprem_native(deck_texto, run_dir,
+                      callback_done=self._on_sim_done,
+                      callback_error=self._on_sim_error)
+
+callback_done recebe uma lista de dicts {name, path, content, rows}, onde
+'rows' ja traz as linhas numericas (profundidade x concentracao) extraidas
+dos PRINT, prontas para plotar na aba de Resultados.
+
+Sugestao no _simulate(): se find_run_dir() achar os binarios nativos,
+prefira o backend nativo; senao, caia no caminho DOSBox.
+================================================================

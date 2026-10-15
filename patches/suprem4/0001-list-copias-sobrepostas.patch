@@ -1,0 +1,41 @@
+--- a/src/shell/list.c
++++ b/src/shell/list.c
+@@ -46,16 +46,22 @@
+ 	return(NULL);
+ 
+     /*step over any leading parens*/
++    /* NB: origem e destino se sobrepoem; strcpy() e' indefinido nesse caso e
++     * as implementacoes vetorizadas atuais da glibc corrompem a string.
++     * memmove() e' o que estas copias sempre quiseram dizer. */
+     if ( *str == '(' )
+-	strcpy(str, str+1);
++	memmove(str, str+1, strlen(str+1) + 1);
+ 
+-    while ( isspace( *str ) ) strcpy(str, str+1);
++    while ( isspace( *str ) ) memmove(str, str+1, strlen(str+1) + 1);
+ 
+     if( *str == 0) return(NULL);
+ 
+     /*find the end of the argument*/
++    /* o '\0' faltava na lista de terminadores: sem ele o laco varre alem do
++     * fim da string quando a lista nao esta entre parenteses */
+     for(count = 0;
+-	     (str[count] != ' ') && (str[count] != ')') && (str[count] != ',');
++	     (str[count] != '\0') && (str[count] != ' ') &&
++	     (str[count] != ')') && (str[count] != ',');
+ 	count++);
+ 
+     /*malloc off space to hold the result*/
+@@ -66,7 +72,11 @@
+     value[i] = '\0';
+ 
+     /*update the list value*/
+-    strcpy(str, (str + count + 1) );
++    /* idem: copia sobreposta -- ver comentario acima */
++    if ( str[count] == '\0' )
++	str[0] = '\0';
++    else
++	memmove(str, str + count + 1, strlen(str + count + 1) + 1);
+ 
+     if ( strlen(value) == 0)
+ 	return(NULL);

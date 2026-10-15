@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.syncfield.MosStudio</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Mos-Studio</name>
+  <summary>Simulação de processos e dispositivos semicondutores</summary>
+  <description>
+    <p>Mos-Studio reúne, em um app GNOME, as ferramentas de simulação de
+    processo (SUPREM-III) e de dispositivo (MINIMOS): montagem da sequência de
+    fabricação, perfis de dopagem, oxidação térmica (Deal-Grove) e
+    características elétricas do transistor MOS (Vth e curvas I-V).</p>
+  </description>
+  <launchable type="desktop-id">io.syncfield.MosStudio.desktop</launchable>
+  <developer_name>SyncField Corporation</developer_name>
+  <content_rating type="oars-1.1"/>
+</component>

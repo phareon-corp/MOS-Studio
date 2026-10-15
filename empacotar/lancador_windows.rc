@@ -1,0 +1,50 @@
+/* Recursos do MOS-Studio.exe: o ícone e a ficha de versão.
+ *
+ * A ficha é o que o Windows mostra em Propriedades > Detalhes e no
+ * gerenciador de tarefas. Sem ela o executável aparece sem nome e sem
+ * versão, o que num instalador soa a programa suspeito.
+ *
+ * VERSAO_* vem da linha de compilação (ver empacotar/montar_windows.py),
+ * para que a versão do executável acompanhe a do pyproject.toml.
+ */
+
+#include <windows.h>
+
+#ifndef VERSAO_NUM
+#define VERSAO_NUM 2,0,0,0
+#endif
+#ifndef VERSAO_TEXTO
+#define VERSAO_TEXTO "2.0.0"
+#endif
+
+/* O ícone 1 é o que o Explorer usa para o arquivo. */
+1 ICON "mos-studio.ico"
+
+VS_VERSION_INFO VERSIONINFO
+    FILEVERSION    VERSAO_NUM
+    PRODUCTVERSION VERSAO_NUM
+    FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+    FILEFLAGS      0
+    FILEOS         VOS_NT_WINDOWS32
+    FILETYPE       VFT_APP
+    FILESUBTYPE    VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        /* 0416 = português do Brasil, 04b0 = Unicode. */
+        BLOCK "041604b0"
+        BEGIN
+            VALUE "CompanyName",      "SyncField Corporation"
+            VALUE "FileDescription",  "MOS-Studio — simulação de processos e dispositivos semicondutores"
+            VALUE "FileVersion",      VERSAO_TEXTO
+            VALUE "InternalName",     "mos-studio"
+            VALUE "OriginalFilename", "MOS-Studio.exe"
+            VALUE "ProductName",      "MOS-Studio"
+            VALUE "ProductVersion",   VERSAO_TEXTO
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0416, 0x04b0
+    END
+END

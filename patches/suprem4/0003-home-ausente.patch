@@ -1,0 +1,72 @@
+Não confia que a variável HOME exista.
+
+O fonte lê ``getenv("HOME")`` em dois lugares e usa o resultado sem
+conferir se veio nulo:
+
+  * ``main.c``, ao montar o caminho do ``~/.supremrc``. É um
+    ``strcpy(dot_name, getenv("HOME"))``: com HOME ausente, o processo lê
+    do endereço zero e morre.
+  * o ``cd`` sem argumento do shell interno, que passa o ponteiro direto
+    para ``chdir()``.
+
+No Unix de 1993 HOME estava sempre lá e a falta de guarda passava
+despercebida. No Windows a variável simplesmente não existe — o
+equivalente é USERPROFILE —, e o primeiro caso derrubava o motor logo
+depois de ler o arquivo de chaves: banner impresso, nenhuma mensagem de
+erro (a saída fica no buffer quando não há console) e código de saída 255.
+Foi assim que apareceu, rodando o suprem.exe na máquina virtual.
+
+Com o guarda, o motor pula o ``.supremrc`` do usuário em vez de morrer, e
+o ``cd`` sem argumento avisa em vez de travar. A correção vale nos dois
+sistemas: no Linux, rodar com HOME limpo derrubava igual.
+
+O ``.supremrc`` da pasta corrente continua sendo lido nos dois casos, e a
+camada de compatibilidade de Windows ainda define HOME a partir de
+USERPROFILE, de modo que lá o arquivo do usuário também funciona.
+
+O ``shell/parser.c`` é gerado pelo bison a partir do ``shell/parser.y``,
+mas vem pronto no pacote e o build não o regera. Os dois são corrigidos,
+para que não divirjam se algum dia ele for regerado.
+
+--- a/src/main.c
++++ b/src/main.c
+@@ -166,8 +166,11 @@
+     do_source(MODELFILE, NULL, FALSE, /*report errors*/ TRUE);
+ 
+     /*read the .supremrc file*/
+-    strcpy(dot_name, (char *)getenv("HOME")); strcat(dot_name, "/.supremrc");
+-    do_source(dot_name, NULL, FALSE, /*report errors*/ FALSE);
++    if ((t = (char *)getenv("HOME")) != NULL
++	&& strlen(t) + sizeof("/.supremrc") <= sizeof(dot_name)) {
++	strcpy(dot_name, t); strcat(dot_name, "/.supremrc");
++	do_source(dot_name, NULL, FALSE, /*report errors*/ FALSE);
++    }
+     do_source(".supremrc", NULL, FALSE, /*report errors*/ FALSE);
+ 
+     /*do any command line files*/
+--- a/src/shell/parser.y
++++ b/src/shell/parser.y
+@@ -364,7 +364,9 @@
+ 	    if (depth == -1) {
+ 		s = par;
+ 		if ( s == NULL ) {
+-		    if (chdir( getenv("HOME") ))
++		    char *casa = (char *)getenv("HOME");
++
++		    if (casa == NULL || chdir( casa ))
+ 			fprintf( stderr, "%s: No such file or directory\n", s);
+ 		}
+ 		else {
+--- a/src/shell/parser.c
++++ b/src/shell/parser.c
+@@ -1822,7 +1822,9 @@
+ 	    if (depth == -1) {
+ 		s = par;
+ 		if ( s == NULL ) {
+-		    if (chdir( getenv("HOME") ))
++		    char *casa = (char *)getenv("HOME");
++
++		    if (casa == NULL || chdir( casa ))
+ 			fprintf( stderr, "%s: No such file or directory\n", s);
+ 		}
+ 		else {

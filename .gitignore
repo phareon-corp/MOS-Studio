@@ -1,0 +1,51 @@
+# ── Saídas de simulação (geradas em tempo de execução) ──
+resultados/
+
+# ── Configuração do usuário (fica em ~/.config/mos-studio/, nunca no repo) ──
+config.json
+
+# ── Bytecode Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ── Diretórios de build / empacotamento ──
+build/
+dist/
+*.egg-info/
+.eggs/
+*.spec
+.venv/
+venv/
+
+# ── Caches de ferramentas ──
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Motores: software de terceiros, NÃO redistribuído ──
+# SUPREM-III e SUPREM-IV são de Stanford/Univ. da Flórida, o MINIMOS 6.1 é
+# da TU Wien, e nenhum dos três permite redistribuição — os cabeçalhos do
+# fonte dizem "all rights reserved". O que este repositório versiona são os
+# scripts que os compilam (build_*.sh) e os remendos (patches/). Ver a seção
+# "Os motores" do README.
+suprem-run/
+minimos-run/
+
+# ── Compilação do SUPREM-IV ──
+# O fonte é clonado e remendado pelo build_suprem4.sh; o resultado
+# (suprem4-run/, suprem4-run-win/) é reproduzível a partir dos patches/,
+# que são o que vale versionar.
+suprem4_build/
+suprem4-run/
+suprem4-run-win/
+
+# ── Pacote e instalador de Windows ──
+# Montados por empacotar/montar_windows.py a partir de peças oficiais
+# baixadas; 100 MB de binários que não pertencem ao histórico.
+windows_build/
+
+# ── Arquivos que a execução gera ──
+diagnostico.txt
+ultima-execucao.log
+debug_log.txt
