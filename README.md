@@ -25,10 +25,14 @@ por nenhum arquivo intermediário editado à mão.
 - **Windows**: o aplicativo roda, com instalador próprio, e **só com o
   SUPREM-IV** — ver [Windows](#windows) e
   [Limitações conhecidas](#limitações-conhecidas).
-- **Os motores não acompanham este repositório.** São software de terceiros,
-  sem permissão de redistribuição; o que está versionado aqui são os scripts
-  que os compilam e os remendos necessários. Ver
-  [Os motores](#os-motores-e-como-obtê-los).
+- **Os motores não são versionados neste repositório** — são software de
+  terceiros, e o que está aqui são os scripts que os compilam e os remendos
+  necessários. Os **pacotes prontos em
+  [Releases](https://github.com/phareon-corp/MOS-Studio/releases) já trazem o
+  SUPREM-IV compilado**; o SUPREM-III e o MINIMOS continuam dependendo do
+  código-fonte deles. Ver [Os motores](#os-motores-e-como-obtê-los).
+- Versão publicada: **v2.0.0**, com instalador de Windows e pacote de Linux
+  em [Releases](https://github.com/phareon-corp/MOS-Studio/releases).
 - Suíte: **856 testes**. Boa parte sobe o motor de verdade, e se auto-pula
   quando ele não está instalado.
 
@@ -76,13 +80,27 @@ e por quê, em vez de falhar só na hora de rodar.
 
 ## Instalar
 
+**Pacote pronto**, em
+[Releases](https://github.com/phareon-corp/MOS-Studio/releases) — já traz o
+simulador 2-D compilado.
+
 ### Linux
+
+```sh
+tar xzf mos-studio-2.0.0-linux-x86_64.tar.gz
+cd mos-studio-2.0.0-linux-x86_64
+pip install --user PySide6          # se ainda não tiver
+./instalar.sh                       # lançador, menu e ícone — sem root
+```
+
+Ou direto do código, para desenvolver:
 
 ```sh
 git clone https://github.com/phareon-corp/MOS-Studio.git
 cd MOS-Studio
 pip install --user PySide6
-./instalar.sh        # lançador, entrada de menu e ícone — sem root
+./build_suprem4.sh                  # compila o simulador 2-D
+./instalar.sh
 ```
 
 O instalador confere Python, PySide6 e os motores **antes** de escrever
@@ -112,7 +130,7 @@ Python: o pacote traz o próprio interpretador, a própria biblioteca gráfica e
 o próprio simulador.
 
 ```
-MOS-Studio-<versão>-instalador.exe
+MOS-Studio-2.0.0-instalador.exe
 ```
 
 Para **gerar** esse instalador a partir do Linux, ver
@@ -126,15 +144,20 @@ python -m mos_studio
 
 ## Os motores, e como obtê-los
 
-**Nenhum dos três simuladores está neste repositório.** São programas de
-terceiros, de 1986 a 1993, distribuídos sob termos que não permitem
-redistribuição — os cabeçalhos do fonte dizem, literalmente, *"all rights
-reserved"* e *"may not be used outside of the SUPREM computer program without
-the prior written consent of Stanford University"*. O que está versionado
-aqui é o que é nosso: os scripts de compilação, os remendos e a camada de
-compatibilidade.
+**Nenhum dos três simuladores é versionado neste repositório.** São
+programas de terceiros, de 1986 a 1993, com cabeçalhos de *"all rights
+reserved"*. O que o Git guarda aqui é o que é nosso: os scripts de
+compilação, os remendos e a camada de compatibilidade.
 
-### SUPREM-IV.GS (2-D) — compila sozinho
+Os **pacotes prontos em
+[Releases](https://github.com/phareon-corp/MOS-Studio/releases)** trazem o
+**SUPREM-IV** já compilado, para que o programa funcione ao instalar. Quem
+clona o repositório o compila com um comando. O SUPREM-III e o MINIMOS não
+estão em lugar nenhum aqui: dependem do código-fonte deles.
+
+### SUPREM-IV.GS (2-D) — compila sozinho, ou vem pronto
+
+Já está dentro dos pacotes de Releases. Para compilar do zero:
 
 ```sh
 ./build_suprem4.sh
@@ -406,6 +429,18 @@ inclusive por que o **wine não serve para validar**: o defeito do ponteiro é
 invisível nele, porque o heap do wine também fica abaixo de 4 GB.
 
 ## Empacotar
+
+### O pacote de Linux
+
+```sh
+./empacotar/montar_linux.sh        # dist/mos-studio-<versão>-linux-x86_64.tar.gz
+```
+
+Leva o programa, os dados, o motor 2-D e o instalador — menos de 1 MB.
+**Não** leva um Python próprio: aqui o programa usa o Python e o PySide6 do
+sistema, que toda distribuição tem a um comando de distância. Embutir uma
+segunda cópia do Qt para repetir o que já está instalado seria desperdício;
+o `instalar.sh` confere as duas dependências e diz o que falta.
 
 ### O pacote e o instalador de Windows, gerados no Linux
 
