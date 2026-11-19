@@ -122,12 +122,25 @@ def run(inp_text: str, mdir: Path, base: str = "mm_run", screen: str = "o",
             env["FORT31"] = str((mdir / "stack.rul").resolve())
             creat = getattr(subprocess, "CREATE_NO_WINDOW", 0) if paths.IS_WIN else 0
             ref_path = work / f"{base}.ref"
-            with open(ref_path, "w") as reff:
+            if is_pe_executable(exe):
+                # O runtime do Compaq Visual Fortran escreve a unidade 6 no
+                # CONOUT$, não no stdout herdado. Sem console (o programa roda
+                # com CREATE_NO_WINDOW), a primeira escrita aborta com
+                # "forrtl: severe (38)" e nenhuma simulação sai. Com FORT6 a
+                # unidade 6 vira um arquivo comum, como as demais.
+                env["FORT6"] = ref_path.name
                 rc = subprocess.run([str(exe.resolve())], cwd=str(work), env=env,
                                     stdin=subprocess.DEVNULL,
-                                    stdout=(reff if screen != "y" else None),
-                                    stderr=subprocess.STDOUT, timeout=1800,
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL, timeout=1800,
                                     creationflags=creat).returncode
+            else:
+                with open(ref_path, "w") as reff:
+                    rc = subprocess.run([str(exe.resolve())], cwd=str(work), env=env,
+                                        stdin=subprocess.DEVNULL,
+                                        stdout=(reff if screen != "y" else None),
+                                        stderr=subprocess.STDOUT, timeout=1800,
+                                        creationflags=creat).returncode
 
             def rd(*names):
                 for n in names:

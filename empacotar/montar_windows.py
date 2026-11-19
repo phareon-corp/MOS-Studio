@@ -15,7 +15,9 @@ peças oficiais:
 
   * a distribuição "embeddable" do python.org (um .zip, sem instalador);
   * as rodas (wheels) ``win_amd64`` do PySide6 e do shiboken6 do PyPI;
-  * o ``suprem4-run-win/`` que o ``build_suprem4_windows.sh`` compila.
+  * o ``suprem4-run-win/`` que o ``build_suprem4_windows.sh`` compila;
+  * o ``suprem-run-win/`` que ``CROSS=x86_64-w64-mingw32 ./build_suprem.sh``
+    compila (SUPREM-III).
 
 Nada é recompilado para Windows aqui além do lançador, que é um .c de cem
 linhas. Tudo mais são binários oficiais, baixados com hash conferido.
@@ -296,6 +298,16 @@ def montar_programa() -> None:
                          "   ./build_suprem4_windows.sh")
     # Vai com o nome que o mos_studio/paths.py procura ao lado do pacote.
     shutil.copytree(motor, PACOTE / "suprem4-run", ignore=IGNORAR)
+
+    # SUPREM-III (1-D): .exe estáticos da compilação cruzada. O MINIMOS não
+    # vai — a licença da TU Wien não deixa; o usuário o instala do próprio
+    # zip pela tela de Dispositivo (core/importar_minimos.py).
+    motor3 = RAIZ / "suprem-run-win"
+    if not (motor3 / "sup3.exe").exists():
+        raise SystemExit("!! falta o SUPREM-III de Windows — rode antes:\n"
+                         "   ./build_suprem.sh && "
+                         "CROSS=x86_64-w64-mingw32 ./build_suprem.sh")
+    shutil.copytree(motor3, PACOTE / "suprem-run", ignore=IGNORAR)
 
     (PACOTE / "resultados").mkdir(exist_ok=True)
     passo("programa, dados e motor copiados")

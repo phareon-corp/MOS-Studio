@@ -117,7 +117,8 @@ $d = "{DESTINO}"
 foreach ($f in @('MOS-Studio.exe','Desinstalar.exe','LEIA-ME.txt',
                  'python\\python.exe','lib\\PySide6\\QtWidgets.pyd',
                  'mos_studio\\app.py','suprem4-run\\bin\\suprem.exe',
-                 'suprem4-run\\data\\suprem.uk')) {{
+                 'suprem4-run\\data\\suprem.uk',
+                 'suprem-run\\sup3.exe','suprem-run\\S3cof0')) {{
   $c = Join-Path $d $f
   if (Test-Path $c) {{ "OK      $f" }} else {{ "FALTA   $f" }}
 }}

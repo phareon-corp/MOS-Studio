@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 import threading
 import time
@@ -40,25 +41,50 @@ class TestAmbiente(unittest.TestCase):
     def test_dez_arquivos_de_dados(self):
         self.assertEqual(len(suprem.DATA_FILES), 10)
 
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.work = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
     @unittest.skipUnless(MOTOR is not None, "motor nativo ausente")
-    def test_aponta_para_os_arquivos_existentes(self):
-        env = suprem._environment(Path(MOTOR))
+    def test_copia_os_dados_e_passa_o_nome_curto(self):
+        """O fonte guarda o nome num character*80: caminho absoluto não serve."""
+        env = suprem._environment(Path(MOTOR), self.work)
         for nome in suprem.DATA_FILES:
             if (Path(MOTOR) / nome).exists():
                 with self.subTest(arquivo=nome):
-                    self.assertEqual(env[nome], str(Path(MOTOR) / nome))
+                    self.assertEqual(env[nome], nome)
+                    self.assertEqual((self.work / nome).read_bytes(),
+                                     (Path(MOTOR) / nome).read_bytes())
 
     @unittest.skipUnless(MOTOR is not None, "motor nativo ausente")
     def test_s3prs0_e_relativo(self):
         """Caminho absoluto aqui quebra a execução — tem de ser relativo."""
-        env = suprem._environment(Path(MOTOR))
+        env = suprem._environment(Path(MOTOR), self.work)
         self.assertEqual(env["S3prs0"], "S3prs0")
         self.assertFalse(os.path.isabs(env["S3prs0"]))
 
     @unittest.skipUnless(MOTOR is not None, "motor nativo ausente")
     def test_preserva_o_ambiente_do_sistema(self):
-        env = suprem._environment(Path(MOTOR))
+        env = suprem._environment(Path(MOTOR), self.work)
         self.assertIn("PATH", env)
+
+    @unittest.skipUnless(MOTOR is not None, "motor nativo ausente")
+    def test_motor_numa_pasta_de_caminho_longo(self):
+        """Regressão: com o caminho dos dados acima de 80 caracteres o genii
+        parava em "ERROR # 33 ... formatted specification file"."""
+        funda = self.work / ("pasta-com-nome-bem-comprido-" * 3) / "suprem-run"
+        shutil.copytree(MOTOR, funda, symlinks=True)
+        self.assertGreater(len(str(funda / "S3fky0")), 80)
+        saida = suprem.run_sync("TITLE fundo\n"
+                                "INITIALIZE <100> SILICON BORON CONCENTRATION=1E15 "
+                                "THICKNESS=1 DX=.01\n"
+                                "DIFFUSION TIME=10 TEMPERATURE=1000 DRYO2\n"
+                                "PRINT LAYERS\nSTOP\n", run_dir=funda)
+        self.assertNotIn("ERROR # 33", saida)
+        self.assertIn("oxide", saida.lower())
 
     def test_ordem_dos_binarios(self):
         self.assertEqual(suprem.BINARIES, ("setup", "genii", "sup3"))

@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QScrollArea, QSplitter,
                                QTabWidget, QVBoxLayout, QWidget)
 
 from ...core import bridge as bridge_mod
-from ...core import minimos, parsers
+from ...core import importar_minimos, minimos, parsers
 from ...core.recipe import Field, fmt_number, parse_float
 from .. import theme
 from ..widgets.common import (Segmented, button, eyebrow, hline, label, row,
@@ -52,6 +52,25 @@ CAMPOS_BIAS = [
     Field("nstep", "Número de passos", "number", unit="",
           minimum=1, maximum=200),
 ]
+
+
+class _InstallWorker(QThread):
+    """Instala o MINIMOS do zip fora da interface (no Linux compila)."""
+
+    done = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, zip_path: str, parent=None) -> None:
+        super().__init__(parent)
+        self._zip = zip_path
+
+    def run(self) -> None:          # noqa: D102 - API do QThread
+        try:
+            self.done.emit(str(importar_minimos.importar(self._zip)))
+        except importar_minimos.ErroMinimos as exc:
+            self.failed.emit(str(exc))
+        except OSError as exc:
+            self.failed.emit(f"Erro de arquivo: {exc}")
 
 
 class _RunWorker(QThread):
@@ -199,6 +218,14 @@ class DeviceScreen(QWidget):
                               theme.space("8"), theme.space("5"))
         rl.setSpacing(theme.space("4"))
         rl.addWidget(self._motor)
+        self._btn_instalar = button(
+            "Instalar MINIMOS a partir do .zip…",
+            tooltip="Aponte para o minimoswin6.1.zip da TU Wien. No Windows "
+                    "o motor é copiado; no Linux, compilado do fonte.",
+            on_click=self.install_engine)
+        self._btn_instalar.setVisible(False)
+        self._install_worker: _InstallWorker | None = None
+        rl.addWidget(self._btn_instalar)
         acoes = QWidget()
         al = QHBoxLayout(acoes)
         al.setContentsMargins(0, 0, 0, 0)
@@ -517,17 +544,51 @@ class DeviceScreen(QWidget):
 
     def _refresh_engine(self) -> None:
         mdir = minimos.find_dir()
-        if mdir is None:
-            self._motor.setText("pasta do MINIMOS não encontrada")
-            self._btn_run.setEnabled(False)
-            return
-        problema = minimos.check_engine(mdir)
+        problema = (minimos.check_engine(mdir) if mdir else
+                    "MINIMOS não instalado — ele não vem com o programa "
+                    "(licença da TU Wien); instale-o a partir do zip")
         if problema:
-            self._motor.setText(problema)
+            self._motor.setText(problema if isinstance(problema, str)
+                                else "; ".join(problema))
             self._btn_run.setEnabled(False)
         else:
             self._motor.setText(f"motor em {mdir.name}")
             self._btn_run.setEnabled(True)
+        if self._install_worker is None:
+            self._btn_instalar.setVisible(bool(problema))
+
+    def install_engine(self) -> None:
+        """Pede o minimoswin6.1.zip e instala o motor a partir dele."""
+        if self._install_worker is not None:
+            return
+        inicio = importar_minimos.procurar_zip()
+        caminho, _ = QFileDialog.getOpenFileName(
+            self, "Escolha o minimoswin6.1.zip (TU Wien)",
+            str(inicio or Path.home()), "Zip do MINIMOS (*.zip)")
+        if not caminho:
+            return
+        self.erro.hide()
+        self._btn_instalar.setEnabled(False)
+        self._motor.setText("instalando o MINIMOS…")
+        self._install_worker = _InstallWorker(caminho, self)
+        self._install_worker.done.connect(self._on_installed)
+        self._install_worker.failed.connect(self._on_install_failed)
+        self._install_worker.start()
+
+    def _install_finished(self) -> None:
+        self._install_worker = None
+        self._btn_instalar.setEnabled(True)
+        self._refresh_engine()
+
+    def _on_installed(self, _pasta: str) -> None:
+        self._install_finished()
+        self._andamento.setText("MINIMOS instalado — pronto para simular")
+
+    def _on_install_failed(self, mensagem: str) -> None:
+        self._install_finished()
+        self.erro.show_error("Não foi possível instalar o MINIMOS", mensagem,
+                             f"Portal da TU Wien (registro gratuito): "
+                             f"{importar_minimos.PORTAL}")
 
     def recheck_engine(self) -> None:
         """Reexamina a pasta do motor (o usuário pode tê-la arrumado)."""
@@ -609,8 +670,10 @@ class DeviceScreen(QWidget):
         if mdir is None or minimos.check_engine(mdir):
             self.erro.show_error(
                 "O MINIMOS não está pronto",
-                minimos.check_engine(mdir) if mdir else
-                "A pasta minimos-run não foi encontrada ao lado do programa.",
+                "; ".join(minimos.check_engine(mdir)) if mdir else
+                "O MINIMOS não vem com o programa (licença da TU Wien). Use "
+                "\"Instalar MINIMOS a partir do .zip…\" com o "
+                "minimoswin6.1.zip.",
                 "")
             return
         self.erro.hide()

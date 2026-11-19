@@ -55,6 +55,9 @@ def _analisador():
     a.add_argument("--diagnostico", "--autoteste", action="store_true",
                    dest="diagnostico",
                    help="confere a instalação, escreve um relatório e sai")
+    a.add_argument("--instalar-minimos", metavar="ZIP",
+                   help="instala o MINIMOS 6.1 a partir do minimoswin6.1.zip "
+                        "da TU Wien (no Linux, compila o fonte) e sai")
     a.add_argument("--capturar", metavar="PNG",
                    help="(dev) salva a janela em PNG e sai; com {tela} no "
                         "nome, percorre as doze telas")
@@ -76,6 +79,17 @@ def main(argv: list[str] | None = None) -> int:
         from .diagnostico import executar
 
         return executar()
+
+    if opcoes.instalar_minimos:
+        from .core import importar_minimos
+
+        try:
+            importar_minimos.importar(opcoes.instalar_minimos,
+                                      log=lambda m: print(">>", m, flush=True))
+        except importar_minimos.ErroMinimos as exc:
+            print(f"!! {exc}", file=sys.stderr)
+            return 1
+        return 0
 
     if opcoes.capturar:
         from .capturas import capturar

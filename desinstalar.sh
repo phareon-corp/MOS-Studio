@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Remove o MOS-Studio do perfil do usuário.
 #
-# Tira apenas o lançador, a entrada de menu e o ícone. NÃO toca no programa
+# Tira o lançador, a entrada de menu, o ícone e o ambiente Python que o
+# instalador criou. NÃO toca no programa
 # (este diretório), nas preferências do usuário, nem nas simulações: quem
 # desinstala não espera perder o histórico. As duas pastas que ficam são
 # apontadas no fim, para quem quiser apagá-las à mão.
@@ -13,6 +14,17 @@ ALVOS=(
   "$HOME/.local/share/applications/$APPID.desktop"
   "$HOME/.local/share/icons/hicolor/scalable/apps/$APPID.svg"
 )
+
+# O ambiente Python do programa (PySide6) e os registros de instalação:
+# são do instalador, não do usuário, e se refazem com ./instalar.sh.
+DADOS="${XDG_DATA_HOME:-$HOME/.local/share}/mos-studio"
+for pasta in "$DADOS/venv" "$DADOS/logs"; do
+  if [ -d "$pasta" ]; then
+    rm -rf "$pasta"
+    echo ">> removido $pasta"
+  fi
+done
+rmdir "$DADOS" 2>/dev/null || true
 
 for alvo in "${ALVOS[@]}"; do
   if [ -e "$alvo" ]; then

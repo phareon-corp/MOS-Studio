@@ -50,12 +50,15 @@ AQUI="$(cd "$(dirname "$0")" && pwd)"
 TRAB="$AQUI/suprem4_build"
 DESTINO="$AQUI/suprem4-run"
 PATCHES="$AQUI/patches/suprem4"
+# Fonte versionado no repositório (licença de Stanford permite; ver
+# fontes/LEIA-ME.md). Fixado num commit: os patches/ foram feitos contra ele.
+PACOTE="$AQUI/fontes/suprem4-cogenda-eb25a07.tar.gz"
 
 echo ">> MOS-Studio: build do SUPREM-IV.GS (64 bits)"
 
 # ---- 0. ferramentas ----------------------------------------
-for f in gcc make; do
-    command -v "$f" >/dev/null || { echo "!! falta '$f' (sudo dnf install gcc make)"; exit 1; }
+for f in gcc make patch tar; do
+    command -v "$f" >/dev/null || { echo "!! falta '$f' (rode ./instalar.sh, que instala as dependências)"; exit 1; }
 done
 
 # ---- 1. obter o fonte --------------------------------------
@@ -65,6 +68,12 @@ if [ $# -ge 1 ]; then
     test -d "$LOCAL/src" || { echo "!! '$LOCAL' nao parece o fonte do suprem4 (sem src/)"; exit 1; }
     echo ">> Copiando fonte local: $LOCAL"
     cp -a "$LOCAL/." "$TRAB/fonte/"
+elif [ -f "$PACOTE" ]; then
+    echo ">> Extraindo $(basename "$PACOTE")"
+    ( cd "$AQUI/fontes" && sha256sum -c --ignore-missing --quiet SHA256SUMS ) \
+        || { echo "!! $(basename "$PACOTE") nao confere com fontes/SHA256SUMS"; exit 1; }
+    mkdir -p "$TRAB/fonte"
+    tar xzf "$PACOTE" -C "$TRAB/fonte" --strip-components=1
 else
     command -v git >/dev/null || { echo "!! falta 'git' (ou passe o fonte local como argumento)"; exit 1; }
     echo ">> Clonando $FONTE_GIT"

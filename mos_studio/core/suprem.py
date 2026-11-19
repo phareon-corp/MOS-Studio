@@ -106,13 +106,25 @@ def check_engine(run_dir: Path | None) -> list[str]:
     return problems
 
 
-def _environment(run_dir: Path) -> dict[str, str]:
-    """Ambiente de execução: os arquivos de dados e o ``S3prs0`` relativo."""
+def _environment(run_dir: Path, work: Path) -> dict[str, str]:
+    """Ambiente de execução: os arquivos de dados e o ``S3prs0`` relativo.
+
+    Os arquivos de dados são COPIADOS para a pasta de trabalho e passados pelo
+    nome curto. O fonte guarda o nome do arquivo num ``character*80``
+    (``opnfl-L.f``): um caminho absoluto mais longo que isso é truncado e o
+    motor para com "ERROR # 33 — File system error #2 ... formatted
+    specification file". Basta o programa estar numa pasta funda, ou o
+    usuário do Windows ter um nome comprido
+    (``C:\\Users\\<nome>\\AppData\\Local\\Programs\\MOS-Studio\\suprem-run\\S3fky0``
+    já passa de 70 caracteres). São 276 KB por execução, e não vão para
+    ``resultados/`` (só ``.OUT``/``.TXT``/``.LST`` vão).
+    """
     env = dict(os.environ)
     for name in DATA_FILES:
         fp = run_dir / name
         if fp.exists():
-            env[name] = str(fp)
+            shutil.copyfile(fp, work / name)
+            env[name] = name
     # IMPORTANTE: nome RELATIVO (cwd = pasta de trabalho), igual ao script
     # 'suprem' original. O motor nao lida bem com caminhos absolutos para o
     # arquivo de saida / S3prs0.
@@ -218,7 +230,7 @@ class SupremRunner:
         stages: list[str] = []
         try:
             (work / "INPUT.IN").write_text(deck, encoding="ascii", errors="replace")
-            env = _environment(run_dir)
+            env = _environment(run_dir, work)
             out_name, inf_name = "OUTPUT.OUT", "RUNINFO.TXT"
 
             if on_stage:
@@ -304,7 +316,7 @@ def run_sync(deck: str, run_dir: Path | None = None, timeout: int = 300) -> str:
     try:
         (work / "INPUT.IN").write_text(strip_plot(deck), encoding="ascii",
                                        errors="replace")
-        env = _environment(rd)
+        env = _environment(rd, work)
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if paths.IS_WIN else 0
 
         def run(binary: str, args: list[str]):

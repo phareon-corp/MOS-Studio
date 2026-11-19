@@ -20,20 +20,16 @@ por nenhum arquivo intermediário editado à mão.
 
 ## Estado
 
-- **Linux**: os três motores funcionam. É o ambiente de desenvolvimento e o
-  único em que a suíte inteira roda.
-- **Windows**: o aplicativo roda, com instalador próprio, e **só com o
-  SUPREM-IV** — ver [Windows](#windows) e
-  [Limitações conhecidas](#limitações-conhecidas).
-- **Os motores não são versionados neste repositório** — são software de
-  terceiros, e o que está aqui são os scripts que os compilam e os remendos
-  necessários. Os **pacotes prontos em
-  [Releases](https://github.com/phareon-corp/MOS-Studio/releases) já trazem o
-  SUPREM-IV compilado**; o SUPREM-III e o MINIMOS continuam dependendo do
-  código-fonte deles. Ver [Os motores](#os-motores-e-como-obtê-los).
-- Versão publicada: **v2.0.0**, com instalador de Windows e pacote de Linux
+- **Linux e Windows: os três motores funcionam.** No Linux o `instalar.sh`
+  instala as dependências e compila os motores sozinho; no Windows o
+  instalador `.exe` já traz o SUPREM-III e o SUPREM-IV compilados.
+- **O MINIMOS é a exceção, por licença**: a TU Wien o distribui de graça só
+  a usuários registrados e não permite repassá-lo. Quem tem o
+  `minimoswin6.1.zip` o instala com um clique na tela de Dispositivo (ou
+  `./instalar.sh --minimos ZIP`). Ver [Os motores](#os-motores-e-como-obtê-los).
+- Versão publicada: **v2.1.0**, com instalador de Windows e pacote de Linux
   em [Releases](https://github.com/phareon-corp/MOS-Studio/releases).
-- Suíte: **856 testes**. Boa parte sobe o motor de verdade, e se auto-pula
+- Suíte: **857 testes**. Boa parte sobe o motor de verdade, e se auto-pula
   quando ele não está instalado.
 
 | ![Seção transversal, terreno claro](docs/img/resultados2d-claro.png) | ![Seção transversal, terreno escuro](docs/img/resultados2d-escuro.png) |
@@ -69,72 +65,81 @@ recorte feito à mão que possa envelhecer sem ninguém notar.
 
 | O quê | Detalhe |
 |---|---|
-| Sistema | **Linux** x86-64, ou **Windows 10/11** 64 bits |
-| Python | **≥ 3.11**, só para quem instala do código. O pacote de Windows traz o próprio |
-| Interface | **PySide6 ≥ 6.5** (desenvolvido e testado com 6.11.1) |
-| Para compilar o SUPREM-IV | `gcc`, ou `mingw64-gcc` para o alvo Windows — nada de Fortran, nada de bibliotecas de 32 bits |
-| Para compilar o SUPREM-III e o MINIMOS | `gcc-gfortran`, **mais o código-fonte deles**, que não está aqui |
+| Sistema | **Linux** x86-64 (Fedora, Ubuntu/Debian, Arch, openSUSE), ou **Windows 10/11** 64 bits |
+| Linux | Python **≥ 3.10** e `sudo`. O resto — compiladores C e Fortran, bibliotecas do Qt, PySide6 — o `instalar.sh` instala |
+| Windows | nada: o instalador traz Python, Qt e os motores |
+| Rede | só na instalação (pacotes do sistema e o PySide6, ~100 MB) |
 
 Sem motor nenhum o programa **abre e navega**: cada tela diz qual motor falta
 e por quê, em vez de falhar só na hora de rodar.
 
 ## Instalar
 
-**Pacote pronto**, em
-[Releases](https://github.com/phareon-corp/MOS-Studio/releases) — já traz o
-simulador 2-D compilado.
-
-### Linux
-
-```sh
-tar xzf mos-studio-2.0.0-linux-x86_64.tar.gz
-cd mos-studio-2.0.0-linux-x86_64
-pip install --user PySide6          # se ainda não tiver
-./instalar.sh                       # lançador, menu e ícone — sem root
-```
-
-Ou direto do código, para desenvolver:
+### Linux — um comando
 
 ```sh
 git clone https://github.com/phareon-corp/MOS-Studio.git
 cd MOS-Studio
-pip install --user PySide6
-./build_suprem4.sh                  # compila o simulador 2-D
 ./instalar.sh
 ```
 
-O instalador confere Python, PySide6 e os motores **antes** de escrever
-qualquer coisa, e cria três arquivos:
+(ou baixe `mos-studio-2.1.0-linux.tar.gz` em
+[Releases](https://github.com/phareon-corp/MOS-Studio/releases), extraia e
+rode `./instalar.sh` lá dentro — é o mesmo conteúdo.)
 
-| O que | Onde |
+O instalador faz tudo, em cinco etapas, e pode ser rodado de novo sem medo —
+o que já está pronto é pulado:
+
+1. **dependências do sistema** — compiladores C e Fortran, `make`, `patch` e
+   as bibliotecas que o Qt 6 carrega para abrir a janela (a `xcb-cursor` é a
+   que mais falta). Usa o gerenciador da distribuição (dnf, apt, pacman ou
+   zypper) e só pede a senha se faltar alguma coisa;
+2. **Python e PySide6** num ambiente próprio, em
+   `~/.local/share/mos-studio/venv`. Não usa `pip install --user`, que o
+   Ubuntu e o Debian recentes recusam (PEP 668);
+3. **os motores**, compilados do fonte que vem em [`fontes/`](fontes/):
+   SUPREM-IV.GS e SUPREM-III; e o MINIMOS, se houver o
+   `minimoswin6.1.zip` em `~/Downloads` (ou com `--minimos ZIP`);
+4. **lançador, menu e ícone** no perfil do usuário;
+5. **conferência**: monta a janela inteira sem mostrá-la e confere os
+   motores. Os registros de cada etapa ficam em
+   `~/.local/share/mos-studio/logs/`.
+
+| Opção | O que faz |
+|---|---|
+| `--minimos ZIP` | instala o MINIMOS a partir do zip da TU Wien |
+| `--recompilar` | compila os motores de novo |
+| `--sem-sistema` | não chama o gerenciador de pacotes (sem sudo) |
+
+| O que fica instalado | Onde |
 |---|---|
 | Lançador `mos-studio` | `~/.local/bin/` |
 | Entrada de menu | `~/.local/share/applications/io.syncfield.MosStudio.desktop` |
 | Ícone | `~/.local/share/icons/hicolor/scalable/apps/` |
+| Python + PySide6 | `~/.local/share/mos-studio/venv/` |
+| Motores | `suprem-run/`, `suprem4-run/`, `minimos-run/` nesta pasta |
 
-O lançador **aponta para este diretório** em vez de copiar o programa. É de
-propósito: os motores e o histórico de execuções vivem aqui, e
-`workspace.legacy_results_dir()` os procura ao lado do pacote. Uma cópia
-envelheceria a cada commit e deixaria de enxergar as execuções antigas. Mover
-ou renomear o diretório quebra o lançador — basta rodar `./instalar.sh` de
-novo no lugar novo.
+O lançador **aponta para esta pasta** em vez de copiar o programa: os motores
+e o histórico de execuções vivem aqui. Mover ou renomear a pasta quebra o
+lançador — basta rodar `./instalar.sh` de novo no lugar novo.
 
-`./desinstalar.sh` remove os três. Não toca nas preferências
-(`~/.config/mos-studio`) nem nas simulações.
+`./desinstalar.sh` remove o lançador, o menu, o ícone e o ambiente Python.
+Não toca nas preferências (`~/.config/mos-studio`) nem nas simulações.
 
-### Windows
+### Windows — um arquivo
 
-Um arquivo só. Instala **por usuário**, sem pedir senha de administrador, e
-aparece em "Aplicativos instalados" com desinstalador próprio. Não precisa de
-Python: o pacote traz o próprio interpretador, a própria biblioteca gráfica e
-o próprio simulador.
+Baixe e rode
+[`MOS-Studio-2.1.0-instalador.exe`](https://github.com/phareon-corp/MOS-Studio/releases).
+Instala **por usuário**, sem pedir senha de administrador, e aparece em
+"Aplicativos instalados" com desinstalador próprio. Não precisa de Python
+nem de compilador: o pacote traz o próprio interpretador, a própria
+biblioteca gráfica, o **SUPREM-III** e o **SUPREM-IV.GS** já compilados.
 
-```
-MOS-Studio-2.0.0-instalador.exe
-```
+Para o MINIMOS: abra a tela **Dispositivo** e clique em **Instalar MINIMOS a
+partir do .zip…**, apontando para o `minimoswin6.1.zip`.
 
-Para **gerar** esse instalador a partir do Linux, ver
-[Empacotar](#empacotar).
+O SmartScreen avisa na primeira execução, porque o instalador não é
+assinado: "Mais informações" → "Executar assim mesmo".
 
 ### Rodar sem instalar
 
@@ -144,48 +149,51 @@ python -m mos_studio
 
 ## Os motores, e como obtê-los
 
-**Nenhum dos três simuladores é versionado neste repositório.** São
-programas de terceiros, de 1986 a 1993, com cabeçalhos de *"all rights
-reserved"*. O que o Git guarda aqui é o que é nosso: os scripts de
-compilação, os remendos e a camada de compatibilidade.
+| Motor | Licença | Como chega |
+|---|---|---|
+| SUPREM-IV.GS | Stanford: copiar e distribuir livre, exceto venda | fonte em `fontes/`, compilado pelo instalador (Linux) ou já no `.exe` (Windows) |
+| SUPREM-III | a mesma | idem |
+| MINIMOS 6.1 | TU Wien: só usuários registrados, sem repasse | **cada usuário traz o próprio zip** |
 
-Os **pacotes prontos em
-[Releases](https://github.com/phareon-corp/MOS-Studio/releases)** trazem o
-**SUPREM-IV** já compilado, para que o programa funcione ao instalar. Quem
-clona o repositório o compila com um comando. O SUPREM-III e o MINIMOS não
-estão em lugar nenhum aqui: dependem do código-fonte deles.
+### SUPREM-III e SUPREM-IV.GS — vêm junto
 
-### SUPREM-IV.GS (2-D) — compila sozinho, ou vem pronto
-
-Já está dentro dos pacotes de Releases. Para compilar do zero:
+O código-fonte original dos dois está em [`fontes/`](fontes/), conferido por
+SHA-256 — o SUPREM-III como Stanford o publica, o SUPREM-IV com os remendos
+da Cogenda, num commit fixo. A nota de licença de Stanford, que permite
+copiar, modificar e distribuir exceto comercialmente, está em
+[`fontes/LEIA-ME.md`](fontes/LEIA-ME.md). O `instalar.sh` os compila; à mão:
 
 ```sh
-./build_suprem4.sh
+./build_suprem4.sh     # SUPREM-IV.GS → suprem4-run/
+./build_suprem.sh      # SUPREM-III   → suprem-run/
 ```
 
-Clona o fonte de um espelho público, aplica os cinco remendos de
-[`patches/suprem4/`](patches/suprem4/), compila em 64 bits só a parte em C,
-gera o arquivo de chaves compilado com o `keyread` e instala em
-`suprem4-run/`. No fim roda o exemplo 1 como teste de fumaça.
-
-Os remendos não são adaptações de conveniência. São **quatro defeitos reais
-de portabilidade** que o Linux perdoava por sorte, mais um `strcpy` com
-regiões sobrepostas que a glibc moderna quebra em silêncio e corrompe todo
-`foreach`. Cada arquivo `.patch` começa explicando o quê e o porquê; o mais
-consequente está em
+O SUPREM-IV leva os cinco remendos de [`patches/suprem4/`](patches/suprem4/):
+**quatro defeitos reais de portabilidade** que o Linux perdoava por sorte,
+mais um `strcpy` com regiões sobrepostas que a glibc moderna quebra em
+silêncio e corrompe todo `foreach`. Cada `.patch` começa explicando o quê e
+o porquê; o mais consequente está em
 [`docs/adr/0003-versao-de-windows.md`](docs/adr/0003-versao-de-windows.md).
 
-### SUPREM-III (1-D) e MINIMOS 6.1 — precisam do fonte
+O SUPREM-III recebe correções de portabilidade aplicadas pelo próprio
+script (continuações de Fortran 66, `implicit undefined`, arquivos
+`scratch`) e é compilado em C89: o GCC 15 compila em C23 por padrão, onde a
+declaração antiga `char *getenv();` vira erro.
 
-```sh
-./build_suprem.sh /caminho/para/relB_8628_tar.Z
-./build_minimos.sh /caminho/para/minimoswin6_1
-```
+### MINIMOS 6.1 — do seu zip
 
-Os dois scripts estão prontos e detectam o sistema (geram `.exe` no Windows,
-sob MSYS2 MINGW64). O que falta é o código-fonte, que tem de vir de quem o
-licenciou. Sem ele, as telas de 1-D e de Dispositivo avisam que o motor não
-foi encontrado, e o resto do programa funciona normalmente.
+A TU Wien entrega o MINIMOS de graça, para ensino e pesquisa, a quem se
+registra no [portal de software](https://www.iue.tuwien.ac.at/software/download/download-area),
+e a licença não permite repassá-lo. Por isso ele não está aqui nem é baixado
+pelo programa. Com o `minimoswin6.1.zip` em mãos:
+
+- **Linux**: `./instalar.sh --minimos /caminho/minimoswin6.1.zip` — ou deixe
+  o zip em `~/Downloads` antes de rodar o instalador, que ele acha sozinho;
+- **qualquer sistema**: botão **Instalar MINIMOS a partir do .zip…** na tela
+  de Dispositivo, ou `mos-studio --instalar-minimos ZIP`.
+
+No Windows o `mm_pl.exe` do zip é usado como está; no Linux o fonte do zip é
+compilado com `build_minimos.sh`.
 
 ### Onde o programa procura
 
@@ -313,7 +321,8 @@ mostra qual venceu.
 | Sintoma | Causa | O que fazer |
 |---|---|---|
 | O programa não abre e não há mensagem | no Windows não existe console para onde escrever o erro | **Diagnóstico** (menu Iniciar, ou `--diagnostico`); ele grava `diagnostico.txt`, e `ultima-execucao.log` fica ao lado do programa |
-| "motor não encontrado" numa tela | o simulador não foi compilado, ou está fora das pastas conhecidas | ver [Os motores](#os-motores-e-como-obtê-los); o diagnóstico diz exatamente qual arquivo falta |
+| "motor não encontrado" numa tela | o simulador não foi compilado, ou está fora das pastas conhecidas | rode `./instalar.sh` de novo (os registros ficam em `~/.local/share/mos-studio/logs/`); o diagnóstico diz exatamente qual arquivo falta |
+| "MINIMOS não instalado" | ele não pode vir junto (licença) | botão **Instalar MINIMOS a partir do .zip…** na tela de Dispositivo |
 | A junção some com uma malha muito fina | acima de ~9.000 nós o SUPREM-IV cai sozinho | a tela de Malha avisa antes de rodar; refine só onde interessa |
 | Uma malha mais fina dá junção mais **rasa** | isso está certo: o valor converge ao refinar (0,172 → 0,149 µm) | confira com `print.1d layers`, que é a conta do próprio motor |
 | Um cartão foi recusado e a execução "terminou bem" | o SUPREM-IV sai com código 0 mesmo recusando cartas | por isso `suprem4.engine_errors()` lê a saída em vez de confiar no código de saída; a mensagem aparece na tela |
@@ -323,11 +332,8 @@ mostra qual venceu.
 
 ## Limitações conhecidas
 
-- **Os motores não vêm no repositório**
+- **O MINIMOS não vem junto** — a licença da TU Wien não permite
   ([Os motores](#os-motores-e-como-obtê-los)).
-- **No Windows só há SUPREM-IV.** SUPREM-III e MINIMOS não têm versão de
-  Windows porque o código-fonte deles não acompanha o projeto; com os fontes,
-  os dois builds já estão preparados.
 - **O SUPREM-IV não desenha.** Toda figura 2-D é remontada de tabelas
   numéricas — é fiel aos números, não é a saída gráfica do motor original.
 - **O perfil não é transportado ponto a ponto para o MINIMOS**, e sim
@@ -393,7 +399,7 @@ python -m unittest discover -s tests -t .
 O `-t .` é obrigatório — sem ele os imports de `tests/legacy.py` falham.
 **Não há pytest**, de propósito: a suíte usa só a biblioteca padrão.
 
-**856 testes.** Boa parte **sobe o motor de verdade** e compara números: é
+**857 testes.** Boa parte **sobe o motor de verdade** e compara números: é
 lenta (uns nove minutos) por escolha, e foi assim que as armadilhas da seção
 anterior apareceram. Os testes que precisam de um motor, ou do PySide6, se
 auto-pulam quando ele não está instalado — então a suíte passa num clone
@@ -406,8 +412,10 @@ B ≈ 0,292 µm²/h contra 0,287 tabelado (Deal & Grove, 1965), com R² = 1,0000
 
 O aplicativo roda igual no Windows 10/11 64 bits. O que muda:
 
-- **só o SUPREM-IV está disponível**
-  ([Limitações conhecidas](#limitações-conhecidas));
+- o SUPREM-III e o SUPREM-IV vêm compilados no instalador (compilação
+  cruzada no Linux, com mingw; os `.exe` não dependem de DLL nenhuma além
+  das do próprio Windows); o MINIMOS usa o `mm_pl.exe` original do zip da
+  TU Wien;
 - a configuração vai para `%APPDATA%` em vez de `~/.config`;
 - toda execução grava `ultima-execucao.log` ao lado do programa, porque um
   programa de janela não tem saída padrão para onde reclamar.
@@ -433,24 +441,28 @@ invisível nele, porque o heap do wine também fica abaixo de 4 GB.
 ### O pacote de Linux
 
 ```sh
-./empacotar/montar_linux.sh        # dist/mos-studio-<versão>-linux-x86_64.tar.gz
+./empacotar/montar_linux.sh        # dist/mos-studio-<versão>-linux.tar.gz
 ```
 
-Leva o programa, os dados, o motor 2-D e o instalador — menos de 1 MB.
-**Não** leva um Python próprio: aqui o programa usa o Python e o PySide6 do
-sistema, que toda distribuição tem a um comando de distância. Embutir uma
-segunda cópia do Qt para repetir o que já está instalado seria desperdício;
-o `instalar.sh` confere as duas dependências e diz o que falta.
+O mesmo conteúdo de um `git clone`: o programa, o fonte dos motores e o
+`instalar.sh`. **Nada compilado**, de propósito: um binário de Fortran
+compilado numa distribuição depende da `libgfortran` e da `glibc` dela e
+quebra na do vizinho. Compilar na máquina de quem instala leva dois minutos
+e funciona em qualquer uma — e o instalador já instala os compiladores.
 
 ### O pacote e o instalador de Windows, gerados no Linux
 
 ```sh
-./build_suprem4_windows.sh            # compila o motor com mingw
-./empacotar/montar_windows.py         # monta o pacote    (~108 MB)
-./empacotar/instalador_windows.py     # gera o instalador  (~31 MB)
+./build_suprem4.sh && ./build_suprem4_windows.sh       # SUPREM-IV com mingw
+./build_suprem.sh && CROSS=x86_64-w64-mingw32 ./build_suprem.sh   # SUPREM-III
+./empacotar/montar_windows.py         # monta o pacote    (~114 MB)
+./empacotar/instalador_windows.py     # gera o instalador  (~32 MB)
 ```
 
-Pré-requisitos: `mingw64-gcc` e `wine`. O wine **não roda nada do
+Pré-requisitos: `mingw64-gcc`, `mingw64-gcc-gfortran` e `wine`. Os
+coeficientes do SUPREM-III (`S3cof0`, `S3uky0`) são gerados rodando o motor
+nativo e copiados para o pacote de Windows: o formato sem formatação do
+gfortran é o mesmo nos dois sistemas. O wine **não roda nada do
 MOS-Studio** — só o compilador do NSIS, que lê um script e escreve um `.exe`.
 
 Nada de PyInstaller: ele precisaria rodar dentro do Windows, porque embute o
@@ -473,6 +485,7 @@ Com uma máquina virtual libvirt chamada `office` rodando o
 ```sh
 ./empacotar/testar_windows.py --enviar   # o pacote sobe e roda lá dentro
 ./empacotar/testar_instalador.py         # instala, usa e desinstala
+./empacotar/testar_motores_windows.py minimoswin6.1.zip   # simula nos três motores
 ```
 
 O primeiro confere que o Python e o Qt do pacote sobem, que o diagnóstico
@@ -482,7 +495,11 @@ confere os arquivos, o atalho no menu Iniciar e a entrada em "Aplicativos
 instalados", roda o programa instalado e desinstala **preservando as
 simulações**.
 
-Os dois acharam defeito real — entre eles um salto relativo errado no
+O terceiro instala numa pasta de caminho longo, instala o MINIMOS pelo zip
+e roda uma simulação curta em cada motor (`empacotar/testar_motores.py`,
+que também serve para conferir uma instalação de Linux).
+
+Os testes acharam defeito real — entre eles um salto relativo errado no
 desinstalador, que deixava o executável para trás.
 
 ## Design

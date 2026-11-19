@@ -23,14 +23,16 @@ venv/
 .mypy_cache/
 .ruff_cache/
 
-# ── Motores: software de terceiros, NÃO redistribuído ──
-# SUPREM-III e SUPREM-IV são de Stanford/Univ. da Flórida, o MINIMOS 6.1 é
-# da TU Wien, e nenhum dos três permite redistribuição — os cabeçalhos do
-# fonte dizem "all rights reserved". O que este repositório versiona são os
-# scripts que os compilam (build_*.sh) e os remendos (patches/). Ver a seção
-# "Os motores" do README.
+# ── Motores compilados ──
+# Saem do fonte em fontes/ (SUPREM-III e SUPREM-IV, licença de Stanford que
+# permite redistribuir) pelos build_*.sh, que o instalar.sh chama. O MINIMOS
+# 6.1 é da TU Wien e NÃO pode ser redistribuído: cada usuário o instala do
+# próprio minimoswin6.1.zip. Ver fontes/LEIA-ME.md.
 suprem-run/
+suprem-run-win/
+suprem_build/
 minimos-run/
+minimos-run.antigo/
 
 # ── Compilação do SUPREM-IV ──
 # O fonte é clonado e remendado pelo build_suprem4.sh; o resultado

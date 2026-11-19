@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # ============================================================================
-#  montar_linux.sh — monta o pacote de Linux do MOS-Studio.
+#  montar_linux.sh — monta o pacote de Linux do MOS-Studio para as Releases.
 #  SyncField Corporation
 #
-#  Gera: dist/mos-studio-<versão>-linux-x86_64.tar.gz
+#  Gera: dist/mos-studio-<versão>-linux.tar.gz
 #
-#  O QUE VAI DENTRO, E O QUE NÃO VAI
-#  ---------------------------------
-#  Vai o programa, os dados e o motor 2-D já compilado, mais o instalador
-#  que cria o lançador e a entrada de menu no perfil do usuário.
+#  O QUE VAI DENTRO
+#  ----------------
+#  O mesmo que um "git clone": o programa, o fonte dos motores de Stanford
+#  (fontes/), os scripts que os compilam e o instalar.sh. Nada compilado.
 #
-#  NÃO vai um Python próprio. Diferente do pacote de Windows, aqui o
-#  programa usa o Python e o PySide6 do sistema: toda distribuição de Linux
-#  tem os dois a um comando de distância, e embutir uma segunda cópia do Qt
-#  (mais de 100 MB) só para repetir o que já está instalado é desperdício.
-#  O ``instalar.sh`` confere as duas dependências antes de escrever
-#  qualquer coisa e diz o que falta.
+#  Por que não levar os motores prontos, como no Windows: um binário de
+#  Fortran compilado numa distribuição depende da libgfortran e da glibc
+#  dela, e quebra na do vizinho. Compilar na máquina de quem instala leva
+#  dois minutos e funciona em qualquer uma — e o instalar.sh já instala os
+#  compiladores. O Python e o PySide6 também ficam por conta dele (num
+#  ambiente próprio, em ~/.local/share/mos-studio/venv).
 #
 #  Uso:
 #      ./empacotar/montar_linux.sh
@@ -28,83 +28,20 @@ cd "$RAIZ"
 VERSAO="$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)"
 [ -n "$VERSAO" ] || { echo "!! não achei a versão no pyproject.toml"; exit 1; }
 
-NOME="mos-studio-$VERSAO-linux-x86_64"
+NOME="mos-studio-$VERSAO-linux"
 DIST="$RAIZ/dist"
-ALVO="$DIST/$NOME"
+mkdir -p "$DIST"
+rm -f "$DIST/$NOME.tar.gz"
 
-rm -rf "$ALVO" "$DIST/$NOME.tar.gz"
-mkdir -p "$ALVO"
-
-echo ">> copiando o programa"
-for d in mos_studio data; do
-    rsync -a --exclude '__pycache__' --exclude '*.pyc' "$RAIZ/$d" "$ALVO/"
-done
-install -m 755 "$RAIZ/instalar.sh"    "$ALVO/instalar.sh"
-install -m 755 "$RAIZ/desinstalar.sh" "$ALVO/desinstalar.sh"
-
-echo ">> copiando o motor 2-D"
-MOTOR="$RAIZ/suprem4-run"
-if [ ! -x "$MOTOR/bin/suprem" ]; then
-    echo "!! falta o SUPREM-IV — rode antes:  ./build_suprem4.sh"
-    exit 1
-fi
-rsync -a --exclude '__pycache__' "$MOTOR" "$ALVO/"
-
-# O instalador espera achar os motores ao lado do pacote; a pasta de saídas
-# é criada aqui para existir já na primeira execução.
-mkdir -p "$ALVO/resultados"
-
-cat > "$ALVO/LEIA-ME.txt" <<EOF
-MOS-Studio $VERSAO — Linux x86-64
-=================================
-
-Instalar (sem root):
-
-    ./instalar.sh
-
-Cria o lançador em ~/.local/bin/mos-studio, a entrada de menu e o ícone.
-Depois é só procurar "MOS-Studio" no menu, ou rodar:  mos-studio
-
-Desinstalar:  ./desinstalar.sh
-(não toca nas preferências nem nas simulações)
-
-PRECISA TER INSTALADO
----------------------
-  Python 3.11 ou mais novo
-  PySide6:   pip install --user PySide6
-
-O instalador confere os dois antes de escrever qualquer coisa.
-
-O QUE VEM DENTRO
-----------------
-  mos_studio/    o programa
-  suprem4-run/   o SUPREM-IV.GS, simulador de processo 2-D
-  resultados/    cada simulação que você roda fica aqui
-
-ONDE ESTA PASTA FICA IMPORTA
-----------------------------
-O lançador aponta para esta pasta em vez de copiar o programa: é daqui que
-ele lê o motor e o histórico de execuções. Se mover ou renomear a pasta,
-rode ./instalar.sh de novo no lugar novo.
-
-OS OUTROS DOIS MOTORES
-----------------------
-O SUPREM-III (processo 1-D) e o MINIMOS 6.1 (dispositivo) não acompanham
-este pacote. Com o código-fonte deles, os scripts build_suprem.sh e
-build_minimos.sh do repositório os compilam e basta pôr as pastas
-suprem-run/ e minimos-run/ aqui ao lado. Sem eles, as telas de 1-D e de
-Dispositivo avisam que o motor não foi encontrado e o resto funciona.
-
-Se algo não abrir:  mos-studio --diagnostico
-
-SyncField Corporation
-https://github.com/phareon-corp/MOS-Studio
-EOF
-
-echo ">> empacotando"
-( cd "$DIST" && tar czf "$NOME.tar.gz" "$NOME" )
+# Os arquivos versionados (e os novos ainda não commitados), sem o que o
+# .gitignore exclui: motores compilados, resultados, caches. O pacote de
+# Windows (empacotar/) não serve a quem baixa o de Linux, mas pesa pouco e
+# deixa o pacote idêntico ao repositório.
+echo ">> empacotando $NOME"
+git ls-files -co --exclude-standard -z \
+  | tar --null -czf "$DIST/$NOME.tar.gz" --transform "s,^,$NOME/," -T -
 
 TAM="$(du -h "$DIST/$NOME.tar.gz" | cut -f1)"
-QUANTOS="$(find "$ALVO" -type f | wc -l)"
-echo
+QUANTOS="$(tar tzf "$DIST/$NOME.tar.gz" | grep -vc '/$')"
 echo ">> pronto: $DIST/$NOME.tar.gz  ($TAM, $QUANTOS arquivos)"
+echo "   quem baixa: tar xzf $NOME.tar.gz && cd $NOME && ./instalar.sh"

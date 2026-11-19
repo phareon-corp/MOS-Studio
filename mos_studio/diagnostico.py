@@ -207,6 +207,10 @@ def _mostrar(texto: str, problemas: list[str], destino: Path | None) -> None:
     app = QApplication.instance()
     if app is None:
         return
+    if app.platformName() in ("offscreen", "minimal"):
+        # Sem tela, o diálogo seria invisível e o exec() esperaria para
+        # sempre por um clique — o instalador ficaria parado no fim.
+        return
 
     dialogo = QDialog()
     dialogo.setWindowTitle("MOS-Studio — diagnóstico")
