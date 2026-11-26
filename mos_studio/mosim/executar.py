@@ -85,7 +85,7 @@ def pontos_polarizacao(deck: Deck, modelo: str) -> list[dict[str, float]]:
     return pts
 
 
-def executar(texto: str, log=None, resolucao: float = 1.0) -> dict:
+def executar(texto: str, log=None, resolucao: float | None = None) -> dict:
     """Roda o deck e devolve ``{"out", "ref", "iv", "returncode", "pontos"}``."""
     agora = datetime.datetime.now().strftime("%y/%m/%d  %H:%M:%S")
     ref: list[str] = []

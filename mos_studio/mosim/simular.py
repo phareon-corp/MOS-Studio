@@ -30,6 +30,12 @@ class Modelo:
     sub: float          # µm (subdifusão lateral)
     nss: float
     est: dict = field(default_factory=dict)
+    adaptativa: bool = False
+    limiar_modo: bool = False             # MODEL=THRES: a malha também segue a dopagem
+    pmalha: malha.ParamMalha | None = None
+    malha0: tuple | None = None          # (xs, ys) iniciais, µm
+    eps_ins_: float = 0.0
+    _mob: fisica.Mobilidade | None = None
 
     @property
     def sinal(self) -> float:
@@ -71,7 +77,7 @@ def _subdifusao(prof: perfil_mod.Perfil) -> float:
     return float(x[k] - n[k] * (x[k + 1] - x[k]) / (n[k + 1] - n[k]))
 
 
-def construir(deck: Deck, resolucao: float = 1.0, linhas_x=None, linhas_y=None) -> Modelo:
+def construir(deck: Deck, resolucao: float | None = None, linhas_x=None, linhas_y=None) -> Modelo:
     dev = deck.uma("DEVICE")
     if (dev.txt("MAT") or "SI")[0] == "G":
         raise ErroDeck("GaAs/MESFET ainda não é suportado pelo motor aberto")
@@ -115,7 +121,8 @@ def construir(deck: Deck, resolucao: float = 1.0, linhas_x=None, linhas_y=None) 
     ymax = min(max(2.0 * xj + 0.5, xj + wdep, 1.0), 60.0)
     xcont = max(0.5, 3 * sub, xj)
     xl, xr = -(sg + xcont), L_um + dg + xcont
-    r = resolucao
+    adaptativa = resolucao is None and linhas_x is None and linhas_y is None
+    r = 1.0 if resolucao is None else resolucao
     alvos_x = [(-sg, 0.02 / r), (0.0, min(0.005, L_um / 60) / r), (L_um, min(0.005, L_um / 60) / r),
                (L_um + dg, 0.02 / r)]
     if prof.sd:
@@ -129,25 +136,56 @@ def construir(deck: Deck, resolucao: float = 1.0, linhas_x=None, linhas_y=None) 
     nox = max(4, int(4 * r))
     ys_ox = np.linspace(-tox_um, 0.0, nox + 1)[:-1]
     ys = np.concatenate([ys_ox, ys_si])
-    if len(xs) * len(ys) > 60000 and linhas_x is None:
+    if len(xs) * len(ys) > 60000 and linhas_x is None and not adaptativa:
         raise ErroDeck(f"geometria fora do alcance do motor aberto (malha de {len(xs)}×{len(ys)}): "
                        "confira L, W e as unidades (cm)")
     if linhas_x is not None:
         xs = np.asarray(linhas_x, dtype=float)
     if linhas_y is not None:
         ys = np.asarray(linhas_y, dtype=float)
-    X, Y = np.meshgrid(xs, ys)
-    C = np.where(Y >= 0, prof.liquida(X, np.maximum(Y, 0)), 0.0).ravel()
-    CI = np.where(Y >= 0, prof.total(X, np.maximum(Y, 0)), 0.0).ravel()
-    s = 1.0 if canal_n else -1.0
+    pm = malha.ParamMalha.do_deck(deck)
+    if adaptativa:
+        bias = deck.uma("BIAS")
+        passo = deck.uma("STEP")
+        ud = abs(bias.num("UD", 0.0) or 0.0) + abs((passo.num("DD", 0.0) or 0.0) * (passo.num("ND", 0.0) or 0.0))
+        ub = abs(bias.num("UB", 0.0) or 0.0) + abs((passo.num("DB", 0.0) or 0.0) * (passo.num("NB", 0.0) or 0.0))
+        w = math.sqrt(2 * fisica.EPS_SI * fisica.EPS0 * (ud + ub + 0.8) / (fisica.Q * nb_eff)) * 1e4
+        xs, ys = malha.inicial(L_um, sg, dg, tox_um, xj, sub, xj + 2.0 * w, pm)
     mob = fisica.Mobilidade(T, "n" if canal_n else "p")
     _aplicar_pesos(mob, deck)
-    geo = Geometria(x=xs * 1e-4, y=ys * 1e-4, L=L, tox=tins, eps_ins=eps_ins,
-                    x_fonte=-sgap, x_dreno=L + dgap)
-    disp = Dispositivo(geo=geo, C=s * C, CI=CI, T=T, nss=s * nss, wf=s * wf, mob=mob, ni=ni)
-    return Modelo(deck=deck, canal_n=canal_n, W=W, L=L, tins=tins, eps_ins=eps_ins, wf=wf,
-                  T=T, nb=nb, perfil=prof, disp=disp, sgap=sgap, dgap=dgap, xj=xj, sub=sub,
-                  nss=nss)
+    m = Modelo(deck=deck, canal_n=canal_n, W=W, L=L, tins=tins, eps_ins=eps_ins, wf=wf,
+               T=T, nb=nb, perfil=prof, disp=None, sgap=sgap, dgap=dgap, xj=xj, sub=sub,
+               nss=nss, adaptativa=adaptativa, pmalha=pm, malha0=(xs, ys), _mob=mob,
+               limiar_modo=(opt.txt("MODEL") or "2-D").startswith("T"))
+    m.disp = dispositivo(m, xs, ys)
+    return m
+
+
+def dispositivo(m: Modelo, xs: np.ndarray, ys: np.ndarray) -> Dispositivo:
+    """O Dispositivo (equações discretizadas) do modelo numa malha dada (µm)."""
+    X, Y = np.meshgrid(xs, ys)
+    prof = m.perfil
+    C = np.where(Y >= 0, prof.liquida(X, np.maximum(Y, 0)), 0.0).ravel()
+    CI = np.where(Y >= 0, prof.total(X, np.maximum(Y, 0)), 0.0).ravel()
+    s = m.sinal
+    geo = Geometria(x=xs * 1e-4, y=ys * 1e-4, L=m.L, tox=m.tins, eps_ins=m.eps_ins,
+                    x_fonte=-m.sgap, x_dreno=m.L + m.dgap)
+    return Dispositivo(geo=geo, C=s * C, CI=CI, T=m.T, nss=s * m.nss, wf=s * m.wf, mob=m._mob,
+                       ni=fisica.intrinseca(m.T))
+
+
+def interpolar(est: Estado, de: Dispositivo, para: Dispositivo) -> Estado:
+    """Leva ψ e ln n de uma malha para outra (bilinear; fora do domínio, o vizinho)."""
+    from scipy.interpolate import RegularGridInterpolator
+    xa, ya = de.geo.x, de.geo.y
+    P = est.psi.reshape(de.ny, de.nx)
+    Nn = np.log(np.maximum(est.n.reshape(de.ny, de.nx), 1e-300))
+    Xb, Yb = np.meshgrid(np.clip(para.geo.x, xa[0], xa[-1]), np.clip(para.geo.y, ya[0], ya[-1]))
+    pts = np.column_stack([Yb.ravel(), Xb.ravel()])
+    psi = RegularGridInterpolator((ya, xa), P)(pts)
+    n = np.exp(RegularGridInterpolator((ya, xa), Nn)(pts))
+    n = np.where(para.si, n, 0.0)
+    return Estado(psi, n)
 
 
 def _aplicar_pesos(mob: fisica.Mobilidade, deck: Deck):
@@ -163,8 +201,75 @@ def resolver_ponto(m: Modelo, U: dict[str, float], est: Estado | None = None, lo
                    passo_max: float = 0.5) -> tuple[Estado, float]:
     """Resolve o ponto U (tensões físicas) e devolve (estado, ID em A).
 
-    Faz continuação em pequenos passos a partir do último estado convergido.
+    Com malha adaptativa (o padrão), cada ponto recomeça na malha inicial e a
+    refina pela solução, como o MINIMOS: resolve, calcula o BWF, divide os
+    intervalos com BWF > 1, leva a solução para a malha nova e resolve de novo.
     """
+    if not m.adaptativa:
+        return _resolver_fixo(m, U, est, log, passo_max)
+    pm = m.pmalha
+    if "_d0" not in m.est:
+        m.est["_d0"] = dispositivo(m, *m.malha0)
+    d0 = m.est["_d0"]
+    if est is not None and m.disp is not d0:
+        est = interpolar(est, m.disp, d0)
+    m.disp = d0
+    idr = 0.0
+    for rodada in range(pm.max_adapt + 1):
+        est, idr = _resolver_fixo(m, U, est, log, passo_max)
+        if rodada == pm.max_adapt:
+            break
+        d = m.disp
+        xs, ys = d.geo.x * 1e4, d.geo.y * 1e4
+        j0 = d.j0
+        psi_v = est.psi.reshape(d.ny, d.nx)[j0:] * d.vt
+        bx, by = malha.bwf(xs, ys[j0:], psi_v, m.L * 1e4, pm)
+        if m.limiar_modo:
+            dx, dy = malha.bwf_dopagem(d.C.reshape(d.ny, d.nx)[j0:], d.ni, pm)
+        else:
+            dx = dy = None
+        nxs = malha.refinar(xs, bx, pm.pgmi, dx, pm.dgmi)
+        nys = malha.refinar(ys[j0:], by, pm.pgmi, dy, pm.dgmi)
+        if _invertido(m, est):
+            base = ys[j0:] if nys is None else nys
+            faltam = [v for v in malha.LINHAS_INVERSAO if np.min(np.abs(base - v)) > 1e-7]
+            if faltam:
+                nys = np.sort(np.concatenate([base, faltam]))
+        if nxs is None and nys is None:
+            if pm.equi_c > 0 and not m.est.get("_equi"):
+                # última etapa: redistribui as linhas sob a porta e resolve de novo
+                g = (np.abs(np.diff(psi_v, axis=1)) / np.diff(xs)).max(axis=0)
+                novo_x = malha.equidistribuir(xs, g, 0.0, m.L * 1e4, pm.equi_c)
+                novo = dispositivo(m, novo_x, ys)
+                est = interpolar(est, d, novo)
+                m.disp = novo
+                est, idr = _resolver_fixo(m, U, est, log, passo_max)
+            break
+        if log:
+            log(f"  malha: rodada {rodada + 1}, {len(xs)}x{len(ys)} -> "
+                f"{len(nxs if nxs is not None else xs)}x{len(ys) - len(ys[j0:]) + len(nys if nys is not None else ys[j0:])}")
+        nxs = xs if nxs is None else nxs
+        nys = ys if nys is None else np.concatenate([ys[:j0], nys])
+        novo = dispositivo(m, nxs, nys)
+        est = interpolar(est, d, novo)
+        m.disp = novo
+    return est, idr
+
+
+def _invertido(m: Modelo, est: Estado) -> bool:
+    """Há canal invertido sob a porta? (n > |C| na superfície em alguma coluna)."""
+    d = m.disp
+    j0 = d.j0
+    x = d.geo.x
+    canal = (x > 0) & (x < m.L)
+    n = est.n.reshape(d.ny, d.nx)[j0, canal] * d.ni
+    c = d.C.reshape(d.ny, d.nx)[j0, canal]
+    return bool(np.any((c < 0) & (n > -c)))
+
+
+def _resolver_fixo(m: Modelo, U: dict[str, float], est: Estado | None = None, log=None,
+                   passo_max: float = 0.5) -> tuple[Estado, float]:
+    """Resolve o ponto U na malha atual, com continuação a partir do último estado."""
     s = m.sinal
     alvo = {k: s * v for k, v in U.items()}
     d = m.disp
