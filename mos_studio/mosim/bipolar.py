@@ -221,7 +221,7 @@ class Bipolar:
         return np.where(d.si, G, 0.0)
 
     # ── sistema completo ────────────────────────────────────────────────
-    def sistema(self, psi, n, p, mu_n, mu_p, G):
+    def sistema(self, psi, n, p, mu_n, mu_p, G, dt=None, n0=None, p0=None):
         d = self.d
         N = d.N
         ea, eb, eh = d.ea, d.eb, d.eh
@@ -250,6 +250,12 @@ class Bipolar:
         Gp -= U
         dUn = d.Vsi * dRn + self.A_sup * dRsn
         dUp = d.Vsi * dRp + self.A_sup * dRsp
+        dtn = np.zeros(N)
+        if dt is not None:
+            # Euler implícito: ∂n/∂t = ∇·Jn/q − U  →  resíduo −V·(n − n₀)/Δt
+            Gn -= d.Vsi * (n - n0) / dt
+            Gp -= d.Vsi * (p - p0) / dt
+            dtn = d.Vsi / dt
         I = np.arange(N)
         r, c, v = [], [], []
         # Poisson
@@ -260,14 +266,14 @@ class Bipolar:
         v += [cn * Bp, -cn * Bm, cn * Bm, -cn * Bp]
         t = cn * (n[b] * dBp + n[a] * dBm)
         r += [N + a, N + a, N + b, N + b]; c += [a, b, b, a]; v += [-t, t, -t, t]
-        r += [N + I, N + I]; c += [N + I, 2 * N + I]; v += [-dUn, -dUp]
+        r += [N + I, N + I]; c += [N + I, 2 * N + I]; v += [-dUn - dtn, -dUp]
         # lacunas
         r += [2 * N + a, 2 * N + a, 2 * N + b, 2 * N + b]
         c += [2 * N + b, 2 * N + a, 2 * N + a, 2 * N + b]
         v += [cp_ * Bm, -cp_ * Bp, cp_ * Bp, -cp_ * Bm]
         t = cp_ * (-p[b] * dBm - p[a] * dBp)
         r += [2 * N + a, 2 * N + a, 2 * N + b, 2 * N + b]; c += [a, b, b, a]; v += [-t, t, -t, t]
-        r += [2 * N + I, 2 * N + I]; c += [N + I, 2 * N + I]; v += [-dUn, -dUp]
+        r += [2 * N + I, 2 * N + I]; c += [N + I, 2 * N + I]; v += [-dUn, -dUp - dtn]
         J = sp.csr_matrix((np.concatenate(v), (np.concatenate(r), np.concatenate(c))),
                           shape=(3 * N, 3 * N))
         return F, Gn, Gp, J
@@ -286,7 +292,7 @@ class Bipolar:
         return Estado2(est.psi.copy(), est.n.copy(), p, est.mu_x)
 
     def resolver(self, U, e: Estado2, tol=1e-9, maxit=200, log=None, impacto=True,
-                 ciclos=40) -> Estado2:
+                 ciclos=40, dt=None, anterior: "Estado2 | None" = None) -> Estado2:
         """Newton acoplado em (ψ, n, p); mobilidades e geração por impacto em subciclo."""
         d = self.d
         N = d.N
@@ -306,7 +312,9 @@ class Bipolar:
         ib_ant = None
         for ciclo in range(ciclos):
             for it in range(maxit):
-                F, Gn, Gp, J = self.sistema(psi, n, p, est.mu_n, est.mu_p, G)
+                F, Gn, Gp, J = self.sistema(psi, n, p, est.mu_n, est.mu_p, G, dt,
+                                            None if anterior is None else anterior.n,
+                                            None if anterior is None else anterior.p)
                 R = np.concatenate([F, Gn, Gp])[livre]
                 A = J[livre][:, livre].tocsc()
                 # escala das linhas e colunas de n e p pela concentração (condicionamento)
@@ -334,7 +342,7 @@ class Bipolar:
                 if log and DEPURAR:
                     log(f"      newton {it}: |dψ|={mx:.2e} lim={lim:.2e} fator={fator:.2e} "
                         f"|R|={np.abs(R).max():.2e}")
-                if mx < tol and lim < 1e-8 and fator == 1.0:
+                if mx < tol and lim < 1e-13 and fator == 1.0:
                     break
                 if fator == 1.0 and mx < 1e-3 and it % 3 == 2:
                     est.mu_n = d.mobilidade(Estado(psi, n), campo=True)
@@ -357,6 +365,75 @@ class Bipolar:
         return est
 
     # ── correntes ───────────────────────────────────────────────────────
+    CONTATOS = {"S": 1, "D": 2, "G": 3, "B": 4}
+
+    def peso_contato(self, nome: str) -> np.ndarray | None:
+        """Função-peso do método integral: 1 na difusão ligada ao contato, 0 fora.
+
+        Fonte e dreno: nós do tipo do contato (C > 0 no problema espelhado) do
+        lado dele. Para o substrato e a porta usa-se o fluxo no próprio contato.
+        """
+        d = self.d
+        xm = 0.5 * d.geo.L
+        if nome == "S":
+            return np.where(d.si & (d.C > 0) & (d.X < xm), 1.0, 0.0)
+        if nome == "D":
+            return np.where(d.si & (d.C > 0) & (d.X >= xm), 1.0, 0.0)
+        return None
+
+    def conducao(self, est: Estado2, W: float, dt=None, anterior: "Estado2 | None" = None) -> dict:
+        """Corrente de condução (A) entrando por contato, separada em elétrons e lacunas.
+
+        Fonte e dreno pelo método integral (pesos do manual do MINIMOS: "weighting
+        functions"): o fluxo direto no contato n+ é a diferença de dois números
+        enormes e carrega ~3e-14 A de arredondamento; com o peso, as arestas
+        dentro da difusão não entram na soma e a corrente é medida na junção.
+        """
+        d = self.d
+        Q = fisica.Q * d.ni * W
+        cur = d.ecur
+        a, b = d.ea[cur], d.eb[cur]
+        dd = est.psi[b] - est.psi[a]
+        cn = est.mu_n[cur] * d.vt * d.eAsi[cur] / d.eh[cur]
+        cp_ = est.mu_p[cur] * d.vt * d.eAsi[cur] / d.eh[cur]
+        fn = cn * (est.n[b] * bern(dd) - est.n[a] * bern(-dd))     # elétrons entrando em a
+        fp = cp_ * (est.p[b] * bern(-dd) - est.p[a] * bern(dd))    # lacunas entrando em a
+        R, _, _ = self.recombinacao(est.n, est.p)
+        Rs, _, _ = self.recomb_superficie(est.n, est.p)
+        Gimp = est.G if est.G is not None else 0.0
+        vol = d.Vsi * (R - Gimp) + self.A_sup * Rs
+        vol_n = vol.copy()
+        vol_p = vol.copy()
+        if dt is not None and anterior is not None:
+            vol_n = vol_n + d.Vsi * (est.n - anterior.n) / dt
+            vol_p = vol_p + d.Vsi * (est.p - anterior.p) / dt
+        out = {}
+        for nome, t in self.CONTATOS.items():
+            w = self.peso_contato(nome)
+            if w is None:
+                ta, tb = d.tipo[a] == t, d.tipo[b] == t
+                e_in = -np.sum(fn[ta & ~tb]) + np.sum(fn[tb & ~ta])
+                h_in = -np.sum(fp[ta & ~tb]) + np.sum(fp[tb & ~ta])
+            else:
+                dw = w[a] - w[b]
+                # Σ_a w_a·Gn_a = −(partículas entrando pelo contato)
+                e_in = -(np.sum(fn * dw) - np.sum(w * vol_n))
+                h_in = -(np.sum(fp * dw) - np.sum(w * vol_p))
+            out[nome] = (-Q * e_in, Q * h_in)
+        return out
+
+    def cargas(self, est: Estado2, W: float) -> dict:
+        """Carga induzida em cada contato (C), pelo resíduo de Poisson nos nós fixos."""
+        d = self.d
+        cpe = d.lam * d.eAeps / d.eh
+        dpsi = est.psi[d.eb] - est.psi[d.ea]
+        F = np.zeros(d.N)
+        np.add.at(F, d.ea, cpe * dpsi)
+        np.add.at(F, d.eb, -cpe * dpsi)
+        F += d.Vsi * (est.p - est.n + d.Cs) + d.sig / d.ni
+        Qe = fisica.Q * d.ni * W
+        return {nome: -Qe * float(np.sum(F[d.tipo == t])) for nome, t in self.CONTATOS.items()}
+
     def correntes(self, est: Estado2, W: float) -> dict:
         """Correntes de terminal (A, convencionais, entrando no dispositivo)."""
         d = self.d

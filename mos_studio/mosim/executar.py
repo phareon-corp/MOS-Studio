@@ -217,12 +217,35 @@ def executar(texto: str, log=None, resolucao: float | None = None) -> dict:
         else:
             iv.append("".join(f"{v:12.3E}" for v in (u["B"], u["D"], u["G"], u["S"], 0.0, idr, 0.0, -idr)))
             resultados.append(dict(u, ID=idr, VTH=vth))
+    tra_txt = None
+    if deck.todas("TRANSIENT"):
+        from . import transiente
+        rlog(f"      {time.time()-t0:5.2f} TRANSIENT SIMULATION")
+        try:
+            regs = transiente.simular(m, deck, pts[0], log=lambda t: rlog("          " + t.strip()))
+        except ErroDeck as e:
+            out += ["0*ERROR*    " + str(e)]
+            ref.append("0*ERROR*    " + str(e))
+            return {"out": "\n".join(out) + "\n", "ref": "\n".join(ref) + "\n",
+                    "iv": "\n".join(iv) + "\n", "returncode": 1, "pontos": resultados}
+        tra_txt = transiente.tra(regs)
+        T = regs[-1]["t"] - regs[0]["t"] or 1.0
+        ref.append("")
+        ref.append(" MEAN VALUES ACROSS THE TOTAL SIMULATION TIME:")
+        ref.append("")
+        ref.append("             IBM        IDM        IGM        ISM        SUM")
+        for tipo in ("ele", "hol", "dis"):
+            # média no tempo (Euler implícito: cada corrente vale no intervalo que termina nela)
+            med = {c: sum(regs[k][tipo][c] * (regs[k]["t"] - regs[k - 1]["t"])
+                          for k in range(1, len(regs))) / T for c in "SGDB"}
+            ref.append(f"       {tipo.upper()} " + "".join(f"{med[c]:11.3E}" for c in "BDGS")
+                       + f"{sum(med.values()):11.3E}")
     rlog(f"      {time.time()-t0:5.2f} OUTPUT PROCESSING")
     saida = deck.uma("OUTPUT")
     pif = _pif(m, est) if saida.logico("PIF") and est is not None else None
     return {"out": "\n".join(out) + "\n", "ref": "\n".join(ref) + "\n",
             "iv": "\n".join(iv) + "\n", "returncode": 0, "pontos": resultados,
-            "pif": pif}
+            "pif": pif, "tra": tra_txt}
 
 
 def _pif(m, est) -> str:
