@@ -35,6 +35,8 @@ class Modelo:
     pmalha: malha.ParamMalha | None = None
     malha0: tuple | None = None          # (xs, ys) iniciais, µm
     eps_ins_: float = 0.0
+    filme: float | None = None            # cm, SOI
+    kbulk: float = 3.9
     _mob: fisica.Mobilidade | None = None
 
     @property
@@ -90,8 +92,11 @@ def construir(deck: Deck, resolucao: float | None = None, linhas_x=None, linhas_
         raise ErroDeck("DEVICE precisa de W, L e TINS")
     if tins <= 0:
         raise ErroDeck("TINS=0 (MESFET) ainda não é suportado pelo motor aberto")
-    if "FILM" in dev:
-        raise ErroDeck("SOI (FILM) ainda não é suportado pelo motor aberto")
+    filme = dev.num("FILM")
+    box = dev.num("BULK")
+    kbulk = dev.num("KBULK")
+    if filme is not None and (box is None or kbulk is None):
+        raise ErroDeck("SOI: FILM exige também BULK e KBULK na diretiva DEVICE")
     ins = dev.chaves.get("INS")
     if ins is None:
         eps_ins = fisica.EPS_OX
@@ -108,6 +113,8 @@ def construir(deck: Deck, resolucao: float | None = None, linhas_x=None, linhas_
     prof = perfil_mod.montar(deck, canal_n, L * 1e4, tins * 1e4)
     nss = deck.uma("INTERFACE").num("NSS", 0.0) or 0.0
     xj = _profundidade_juncao(prof, -3.0 - 10 * prof.sigma_x)
+    if filme is not None:
+        xj = min(xj, filme * 1e4) if xj > 0 else filme * 1e4
     sub = _subdifusao(prof) if prof.sd else 0.0
     nb = abs(prof.nb)
 
@@ -150,13 +157,19 @@ def construir(deck: Deck, resolucao: float | None = None, linhas_x=None, linhas_
         ud = abs(bias.num("UD", 0.0) or 0.0) + abs((passo.num("DD", 0.0) or 0.0) * (passo.num("ND", 0.0) or 0.0))
         ub = abs(bias.num("UB", 0.0) or 0.0) + abs((passo.num("DB", 0.0) or 0.0) * (passo.num("NB", 0.0) or 0.0))
         w = math.sqrt(2 * fisica.EPS_SI * fisica.EPS0 * (ud + ub + 0.8) / (fisica.Q * nb_eff)) * 1e4
-        xs, ys = malha.inicial(L_um, sg, dg, tox_um, xj, sub, xj + 2.0 * w, pm)
+        xs, ys = malha.inicial(L_um, sg, dg, tox_um, xj, sub, xj + 2.0 * w, pm,
+                               filme=None if filme is None else filme * 1e4,
+                               box=None if box is None else box * 1e4)
+    elif filme is not None and linhas_y is None:
+        _, ys = malha.inicial(L_um, sg, dg, tox_um, xj, sub, 1.0, pm, filme=filme * 1e4,
+                              box=box * 1e4)
     mob = fisica.Mobilidade(T, "n" if canal_n else "p")
     _aplicar_pesos(mob, deck)
     m = Modelo(deck=deck, canal_n=canal_n, W=W, L=L, tins=tins, eps_ins=eps_ins, wf=wf,
                T=T, nb=nb, perfil=prof, disp=None, sgap=sgap, dgap=dgap, xj=xj, sub=sub,
                nss=nss, adaptativa=adaptativa, pmalha=pm, malha0=(xs, ys), _mob=mob,
-               limiar_modo=(opt.txt("MODEL") or "2-D").startswith("T"))
+               limiar_modo=(opt.txt("MODEL") or "2-D").startswith("T"),
+               filme=filme, kbulk=kbulk or 3.9)
     m.disp = dispositivo(m, xs, ys)
     return m
 
@@ -165,11 +178,14 @@ def dispositivo(m: Modelo, xs: np.ndarray, ys: np.ndarray) -> Dispositivo:
     """O Dispositivo (equações discretizadas) do modelo numa malha dada (µm)."""
     X, Y = np.meshgrid(xs, ys)
     prof = m.perfil
-    C = np.where(Y >= 0, prof.liquida(X, np.maximum(Y, 0)), 0.0).ravel()
-    CI = np.where(Y >= 0, prof.total(X, np.maximum(Y, 0)), 0.0).ravel()
+    dentro = Y >= 0
+    if m.filme is not None:
+        dentro &= Y <= m.filme * 1e4 * (1 + 1e-9)
+    C = np.where(dentro, prof.liquida(X, np.maximum(Y, 0)), 0.0).ravel()
+    CI = np.where(dentro, prof.total(X, np.maximum(Y, 0)), 0.0).ravel()
     s = m.sinal
     geo = Geometria(x=xs * 1e-4, y=ys * 1e-4, L=m.L, tox=m.tins, eps_ins=m.eps_ins,
-                    x_fonte=-m.sgap, x_dreno=m.L + m.dgap)
+                    x_fonte=-m.sgap, x_dreno=m.L + m.dgap, y_filme=m.filme, eps_box=m.kbulk)
     return Dispositivo(geo=geo, C=s * C, CI=CI, T=m.T, nss=s * m.nss, wf=s * m.wf, mob=m._mob,
                        ni=fisica.intrinseca(m.T))
 

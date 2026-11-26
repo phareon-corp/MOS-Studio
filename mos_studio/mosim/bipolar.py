@@ -52,13 +52,15 @@ class ParamGR:
     ep: float = 1.0
     fn: float = 2.2
     fp: float = 2.2
+    vn: float = 100.0        # SOI: recombinação na interface filme–isolante enterrado
+    vp: float = 100.0
 
     @classmethod
     def do_deck(cls, deck) -> "ParamGR":
         r = deck.uma("RECOMBINATION")
         p = cls()
         for k in ("TN", "TP", "CN", "CP", "SN", "SP", "AN", "AP", "BN", "BP", "DN", "DP",
-                  "EN", "EP", "FN", "FP"):
+                  "EN", "EP", "FN", "FP", "VN", "VP"):
             v = r.num(k)
             if v is not None:
                 setattr(p, k.lower(), v)
@@ -68,9 +70,9 @@ class ParamGR:
         """Parâmetros do portador físico 'n' ou 'p'."""
         if fisico == "n":
             return dict(t=self.tn, c=self.cn, s=self.sn, a=self.an, b=self.bn, d=self.dn,
-                        e=self.en, f=self.fn)
+                        e=self.en, f=self.fn, v=self.vn)
         return dict(t=self.tp, c=self.cp, s=self.sp, a=self.ap, b=self.bp, d=self.dp,
-                    e=self.ep, f=self.fp)
+                    e=self.ep, f=self.fp, v=self.vp)
 
 
 @dataclass
@@ -106,6 +108,10 @@ class Bipolar:
         sob = (x > g.x_fonte + 1e-12) & (x < g.x_dreno - 1e-12)
         self.A_sup = np.zeros(d.N)
         self.A_sup[idx[d.j0, :]] = np.where(sob, wx, 0.0)
+        # SOI: interface de trás (filme–isolante enterrado), velocidades VN/VP (2.30)
+        self.A_tras = np.zeros(d.N)
+        if d.soi:
+            self.A_tras[idx[d.jb, :]] = wx
         self.profund = np.maximum(d.Y, 0.0)          # cm, abaixo da interface
         self.livre_c = np.where((d.tipo == 0) & d.si)[0]
 
@@ -166,18 +172,19 @@ class Bipolar:
         return np.where(si, R, 0.0), np.where(si, dRn, 0.0), np.where(si, dRp, 0.0)
 
     def recomb_superficie(self, n, p):
-        """R_s (por área, escalonada) e derivadas, na interface porta-silício."""
-        sn, sp_ = self.pn["s"], self.pp["s"]
-        if sn <= 0 or sp_ <= 0:
-            z = np.zeros_like(n)
-            return z, z, z
-        den = (n + 1.0) / sp_ + (p + 1.0) / sn
-        np1 = n * p - 1.0
-        R = np1 / den
-        dRn = p / den - np1 / (sp_ * den ** 2)
-        dRp = n / den - np1 / (sn * den ** 2)
-        m = self.A_sup > 0
-        return np.where(m, R, 0.0), np.where(m, dRn, 0.0), np.where(m, dRp, 0.0)
+        """R_s·área (escalonada) e derivadas: interface porta-silício (2.29) e, no
+        SOI, a de trás (2.30). Devolve já multiplicado pela área de cada nó."""
+        R = np.zeros_like(n); dRn = np.zeros_like(n); dRp = np.zeros_like(n)
+        for area, sn, sp_ in ((self.A_sup, self.pn["s"], self.pp["s"]),
+                              (self.A_tras, self.pn["v"], self.pp["v"])):
+            if sn <= 0 or sp_ <= 0 or not area.any():
+                continue
+            den = (n + 1.0) / sp_ + (p + 1.0) / sn
+            np1 = n * p - 1.0
+            R += area * np1 / den
+            dRn += area * (p / den - np1 / (sp_ * den ** 2))
+            dRp += area * (n / den - np1 / (sn * den ** 2))
+        return R, dRn, dRp
 
     def geracao_impacto(self, est: Estado2) -> np.ndarray:
         """Geração por ionização por impacto por nó (cm⁻³/s), escalonada por n_i.
@@ -242,14 +249,14 @@ class Bipolar:
         fp = cp_ * (p[b] * Bm - p[a] * Bp)         # lacunas entrando em a
         R, dRn, dRp = self.recombinacao(n, p)
         Rs, dRsn, dRsp = self.recomb_superficie(n, p)
-        U = d.Vsi * R + self.A_sup * Rs - d.Vsi * G
+        U = d.Vsi * R + Rs - d.Vsi * G
         Gn = np.zeros(N); Gp = np.zeros(N)
         np.add.at(Gn, a, fn); np.add.at(Gn, b, -fn)
         np.add.at(Gp, a, fp); np.add.at(Gp, b, -fp)
         Gn -= U
         Gp -= U
-        dUn = d.Vsi * dRn + self.A_sup * dRsn
-        dUp = d.Vsi * dRp + self.A_sup * dRsp
+        dUn = d.Vsi * dRn + dRsn
+        dUp = d.Vsi * dRp + dRsp
         dtn = np.zeros(N)
         if dt is not None:
             # Euler implícito: ∂n/∂t = ∇·Jn/q − U  →  resíduo −V·(n − n₀)/Δt
@@ -287,7 +294,7 @@ class Bipolar:
     def de_estado(self, est: Estado, U) -> Estado2:
         """Estado de dois portadores a partir do modelo 2-D (lacunas de Boltzmann)."""
         d = self.d
-        phip = U["B"] / d.vt
+        phip = U[d.ref_maj] / d.vt
         p = np.where(d.si, np.exp(np.clip(phip - est.psi, -700, 700)), 0.0)
         return Estado2(est.psi.copy(), est.n.copy(), p, est.mu_x)
 
@@ -401,7 +408,7 @@ class Bipolar:
         R, _, _ = self.recombinacao(est.n, est.p)
         Rs, _, _ = self.recomb_superficie(est.n, est.p)
         Gimp = est.G if est.G is not None else 0.0
-        vol = d.Vsi * (R - Gimp) + self.A_sup * Rs
+        vol = d.Vsi * (R - Gimp) + Rs
         vol_n = vol.copy()
         vol_p = vol.copy()
         if dt is not None and anterior is not None:
@@ -458,7 +465,7 @@ class Bipolar:
         # dreno usa-se a corrente no meio do canal mais a geração líquida de cada lado
         R, _, _ = self.recombinacao(est.n, est.p)
         Rs, _, _ = self.recomb_superficie(est.n, est.p)
-        liq = (d.Vsi * (est.G - R) - self.A_sup * Rs)
+        liq = (d.Vsi * (est.G - R) - Rs)
         xm = 0.5 * d.geo.L
         canal = d.corrente_canal(est.psi, est.n, est.mu_n) * W
         lado_d = Q * np.sum(liq[d.X >= xm]) * W

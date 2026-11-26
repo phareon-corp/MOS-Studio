@@ -140,7 +140,8 @@ def _degrau_aureo(v: float) -> float:
 
 def inicial(L: float, sgap: float, dgap: float, tox: float, xj: float, sub: float,
             profundidade: float, p: ParamMalha, extra_x: tuple[float, ...] = (),
-            extra_y: tuple[float, ...] = ()) -> tuple[np.ndarray, np.ndarray]:
+            extra_y: tuple[float, ...] = (), filme: float | None = None,
+            box: float | None = None) -> tuple[np.ndarray, np.ndarray]:
     """Malha inicial (µm): x com o contato de fonte à esquerda, y com o isolante em y<0.
 
     * sob a porta, ``gfill`` seções iguais, com a seção da ponta subdividida
@@ -162,13 +163,28 @@ def inicial(L: float, sgap: float, dgap: float, tox: float, xj: float, sub: floa
         xs_d.append(xs_d[-1] + passo)
     xs = sorted(set(np.round(gate + xs_f + xs_d + [-sgap / 2.0, L + dgap / 2.0, *extra_x], 9)))
 
-    fundo = _degrau_aureo(profundidade)
-    ys = [v for v in SEQ_Y if v < fundo * 0.999]
-    if fundo - ys[-1] < 0.3 * (ys[-1] - ys[-2]):
-        ys[-1] = fundo
+    if filme is not None:
+        # SOI: linhas áureas a partir das duas interfaces do filme (a de cima e a do
+        # isolante enterrado), encontrando-se a ~0,62 do filme; no isolante
+        # enterrado, crescimento áureo a partir do filme (as malhas do MINIMOS
+        # no exsoi: 0,15; 0,1516; 0,1532; 0,1557…)
+        cima = [v for v in SEQ_Y if v < filme / PHI]
+        baixo = [filme - v for v in SEQ_Y if v < filme / PHI ** 2]
+        ys = sorted(set(np.round(cima + baixo + [filme], 9)))
+        h, yy = SEQ_Y[1], filme
+        while yy + h < filme + box * 0.999:
+            yy += h
+            ys.append(yy)
+            h *= PHI if len(ys) % 2 else 1.0
+        ys.append(filme + box)
     else:
-        ys.append(fundo)
-    ys += [v for v in extra_y if 0 < v < fundo]
+        fundo = _degrau_aureo(profundidade)
+        ys = [v for v in SEQ_Y if v < fundo * 0.999]
+        if fundo - ys[-1] < 0.3 * (ys[-1] - ys[-2]):
+            ys[-1] = fundo
+        else:
+            ys.append(fundo)
+        ys += [v for v in extra_y if 0 < v < fundo]
     # isolante: espelha os primeiros intervalos do silício até a espessura do óxido
     ins = []
     yy, h = 0.0, p.h0_y

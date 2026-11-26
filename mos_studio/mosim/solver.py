@@ -59,6 +59,8 @@ class Geometria:
     eps_ins: float
     x_fonte: float           # cm: contato de fonte em y=0 para x <= x_fonte
     x_dreno: float           # cm: contato de dreno em y=0 para x >= x_dreno
+    y_filme: float | None = None   # cm: SOI — o silício vai de 0 a y_filme; abaixo, isolante
+    eps_box: float = 3.9           # permissividade do isolante enterrado (KBULK)
 
 
 @dataclass
@@ -100,9 +102,13 @@ class Dispositivo:
         X, Y = np.meshgrid(x, y)
         self.X, self.Y = X.ravel(), Y.ravel()
         idx = np.arange(self.N).reshape(ny, nx)
-        si_row = y[1:] > 1e-14 + 0 * y[1:]       # célula entre y[j] e y[j+1] é silício se y[j+1] > 0
+        # célula entre y[j] e y[j+1] é silício se está abaixo da interface (e, no
+        # SOI, acima do isolante enterrado)
         si_row = y[:-1] >= -1e-14
-        eps_row = np.where(si_row, fisica.EPS_SI, g.eps_ins)
+        self.soi = g.y_filme is not None
+        if self.soi:
+            si_row &= y[1:] <= g.y_filme * (1 + 1e-9)
+        eps_row = np.where(si_row, fisica.EPS_SI, np.where(y[:-1] < -1e-14, g.eps_ins, g.eps_box))
         # arestas horizontais (i,j)-(i+1,j)
         a_h = idx[:, :-1].ravel()
         b_h = idx[:, 1:].ravel()
@@ -162,8 +168,13 @@ class Dispositivo:
         jg = int(np.argmin(np.abs(y + g.tox)))
         porta = (xs >= -1e-12) & (xs <= g.L + 1e-12)
         tipo[idx[jg, porta]] = 3
-        tipo[idx[-1, :]] = 4
+        if not self.soi:
+            tipo[idx[-1, :]] = 4          # no SOI o fundo do isolante é livre (sem eletrodo)
         self.tipo = tipo
+        # quase-Fermi dos majoritários no modelo 2-D: o substrato; no SOI (corpo
+        # flutuante, sem contato) a fonte
+        self.ref_maj = "S" if self.soi else "B"
+        self.jb = int(np.argmin(np.abs(y - g.y_filme))) if self.soi else None
         self.lam = fisica.EPS0 * self.vt / (fisica.Q * self.ni)
         self.Cs = self.C / self.ni
         # mapeamento das incógnitas
@@ -243,7 +254,7 @@ class Dispositivo:
             mu = mob.campo(mu, np.hypot(fx, fy))
         out = np.zeros((ny, nx))
         out[j0:] = mu
-        return out.ravel()
+        return out.ravel() * self.si
 
     def mobilidade(self, est: Estado, campo: bool = True) -> np.ndarray:
         """Mobilidade nas arestas a partir da nodal."""
@@ -345,7 +356,7 @@ class Dispositivo:
         """
         vt = self.vt
         psi_c, n_c = self.contorno(U)
-        phip = U["B"] / vt
+        phip = U[self.ref_maj] / vt
         if est is None:
             est = self.inicial(U)
         psi = est.psi.copy()
@@ -430,7 +441,7 @@ class Dispositivo:
         xm = 0.5 * self.geo.L
         tipo_n = self.si & (self.C > 0)
         tipo_p = self.si & (self.C <= 0)
-        dS, dD, dB = ((U1[k] - U0[k]) / vt for k in ("S", "D", "B"))
+        dS, dD, dB = ((U1[k] - U0[k]) / vt for k in ("S", "D", self.ref_maj))
         regs = [(tipo_n & (self.X >= xm), dD), (tipo_n & (self.X < xm), dS), (tipo_p, dB)]
         for m_, d in regs:
             psi[m_] += d
@@ -458,7 +469,7 @@ class Dispositivo:
         vt = self.vt
         c = self.Cs
         neq = c / 2 + np.sqrt(c * c / 4 + 1.0)
-        psi = np.where(self.si, U["B"] / vt + np.log(neq), 0.0)
+        psi = np.where(self.si, U[self.ref_maj] / vt + np.log(neq), 0.0)
         # isolante: interpola linearmente entre a porta e o silício (por coluna)
         ny, nx = self.ny, self.nx
         P = psi.reshape(ny, nx)
