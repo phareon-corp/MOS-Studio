@@ -32,9 +32,10 @@ por nenhum arquivo intermediário editado à mão.
 - **Sem o MINIMOS, a tela de Dispositivo usa o MOSIM**, o simulador aberto do
   próprio programa, que lê os mesmos decks e grava as mesmas saídas. Ver
   [MOSIM](#mosim--o-motor-de-dispositivo-aberto-já-incluído).
-- Versão publicada: **v2.1.0**, com instalador de Windows e pacote de Linux
-  em [Releases](https://github.com/phareon-corp/MOS-Studio/releases). O
-  MOSIM já está no código-fonte; os pacotes da v2.1.0 ainda não o trazem.
+- Versão publicada: **v2.2.0**, com instalador de Windows e pacote de Linux
+  em [Releases](https://github.com/phareon-corp/MOS-Studio/releases), já com
+  o MOSIM completo (malha adaptativa, avalanche, transiente, SOI, perfis de
+  arquivo).
 - Licença do código: **Apache-2.0** ([`LICENSE`](LICENSE)).
 - Suíte: **867 testes**, todos passando. Boa parte sobe o motor de verdade, e se auto-pula
   quando ele não está instalado.
@@ -115,7 +116,7 @@ cd MOS-Studio
 ./instalar.sh
 ```
 
-(ou baixe `mos-studio-2.1.0-linux.tar.gz` em
+(ou baixe `mos-studio-2.2.0-linux.tar.gz` em
 [Releases](https://github.com/phareon-corp/MOS-Studio/releases), extraia e
 rode `./instalar.sh` lá dentro — é o mesmo conteúdo.)
 
@@ -161,7 +162,7 @@ Não toca nas preferências (`~/.config/mos-studio`) nem nas simulações.
 ### Windows — um arquivo
 
 Baixe e rode
-[`MOS-Studio-2.1.0-instalador.exe`](https://github.com/phareon-corp/MOS-Studio/releases).
+[`MOS-Studio-2.2.0-instalador.exe`](https://github.com/phareon-corp/MOS-Studio/releases).
 Instala **por usuário**, sem pedir senha de administrador, e aparece em
 "Aplicativos instalados" com desinstalador próprio. Não precisa de Python
 nem de compilador: o pacote traz o próprio interpretador, a própria
@@ -231,19 +232,35 @@ compilado com `build_minimos.sh`.
 
 Sem o MINIMOS, a tela de Dispositivo usa o **MOSIM**, o simulador aberto do
 próprio programa (`mos_studio/mosim/`). Ele lê os mesmos decks do MINIMOS e
-grava as saídas no mesmo formato (`.out`, `.ref`, `.iv`, PIF); os modelos são
-os do manual do MINIMOS 6, e o que o manual não detalha foi medido na saída
-do MINIMOS para que os números coincidam. Com os dois instalados, a escolha
-fica na tela de Dispositivo. Também roda pela linha de comando:
+grava as saídas no mesmo formato (`.out`, `.ref`, `.iv`, `.tra`, PIF); os
+modelos são os do manual do MINIMOS 6, e o que o manual não detalha foi
+medido na saída do MINIMOS para que os números coincidam — inclusive a
+**malha adaptativa**, que o MOSIM reproduz em vez de usar uma malha fina,
+porque é dela que vêm os números que o MINIMOS imprime. Com os dois
+instalados, a escolha fica na tela de Dispositivo. Também roda pela linha de
+comando:
 
 ```bash
-python -m mos_studio.mosim deck.inp      # grava deck.out, deck.ref e deck.iv
+python -m mos_studio.mosim deck.inp      # grava deck.out, deck.ref, deck.iv (e .tra)
 ```
 
-Cobre `MODEL=THRES`, `1-D` e `2-D` de MOSFETs de silício com perfil analítico.
-Nos decks de canal longo testados, o Vth difere do MINIMOS em até 0,02 V e a
-corrente acima do limiar em até 2 %; em canal curto a corrente pode diferir
-alguns por cento, por causa da malha. Detalhes e limites em
+| O que o deck pede | MOSIM | Contra o MINIMOS 6.1 (mesmos decks) |
+|---|---|---|
+| `MODEL=THRES` | sim | limiar a ±0,013 V nos 11 exemplos |
+| `MODEL=1-D`, `2-D` | sim | exa2d +0,3 %; 57 variantes com mediana de 1,2 % |
+| `MODEL=AVAL` — dois portadores, recombinação, avalanche | sim | ID a 1,2 % (mediana); corrente de substrato a ~20 % com dreno alto |
+| `TRANSIENT` — ondas constante, trapézio e três níveis | sim | mesmos passos de tempo; correntes a 1,4 % (mediana) |
+| SOI (`FILM`, `BULK`, `KBULK`), corpo flutuante | sim | −5 % (2-D), −8,5 % (AVAL) |
+| `PROFILE FILE=2-D`/`1-D`, `NS`, `ASYM` | sim | o MINIMOS desta compilação aborta com `FILE=2-D` |
+| `MODEL=HOT`, `MC`; MESFET/GaAs; tunelamento; armadilhas; AC | ainda não | o deck é recusado com o motivo |
+
+Com o MOSIM, a ponte com o processo fica **direta**: o perfil do canal que o
+SUPREM calculou vai ao dispositivo ponto a ponto (`PROFILE FILE=2-D`), e só
+fonte e dreno, que o corte de porta não contém, são reconstruídos a partir
+dos parâmetros. A opção **Física → Com avalanche** da tela de Dispositivo
+roda o modelo AVAL e mostra a corrente de substrato.
+
+Detalhes, medições e limites em
 [docs/adr/0005](docs/adr/0005-motor-de-dispositivo-aberto.md).
 
 ### Onde o programa procura
@@ -385,10 +402,13 @@ mostra qual venceu.
 
 - **O MINIMOS não vem junto** — a licença da TU Wien não permite
   ([Os motores](#os-motores-e-como-obtê-los)). O MOSIM, que vem, ainda não
-  cobre `MODEL=AVAL/HOT/MC`, MESFET, SOI nem perfis de arquivo, e é mais lento.
+  cobre `MODEL=HOT/MC`, MESFET/GaAs, tunelamento banda a banda, armadilhas
+  dinâmicas nem análise AC, e é mais lento (1–15 s por ponto contra frações
+  de segundo).
 - **O SUPREM-IV não desenha.** Toda figura 2-D é remontada de tabelas
   numéricas — é fiel aos números, não é a saída gráfica do motor original.
-- **O perfil não é transportado ponto a ponto para o MINIMOS**, e sim
+- **Com o MINIMOS, o perfil não é transportado ponto a ponto** (com o
+  MOSIM, é), e sim
   reconstruído a partir de parâmetros; a tela de Dispositivo diz isso nela
   mesma.
 - **Acima de ~9.000 nós o SUPREM-IV cai.** O limite foi encontrado por

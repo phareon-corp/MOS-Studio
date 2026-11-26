@@ -1,6 +1,6 @@
 [project]
 name = "mos-studio"
-version = "2.1.0"
+version = "2.2.0"
 description = "Interface para os simuladores SUPREM-III e SUPREM-IV.GS (processo) e MINIMOS 6.1 ou o simulador aberto MOSIM (dispositivo)"
 requires-python = ">=3.10"
 license = "Apache-2.0"

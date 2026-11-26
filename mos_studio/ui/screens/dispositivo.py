@@ -475,7 +475,7 @@ class DeviceScreen(QWidget):
                 self._pl.addWidget(t)
                 self._pl.addWidget(v)
                 self._pl.addWidget(o)
-        nota = label(b.aviso, wrap=True)
+        nota = label(bridge_mod.AVISO_MOSIM if self._ponte_direta() else b.aviso, wrap=True)
         theme.mark(nota, role="muted")
         nota.setFont(theme.font("mono", "micro"))
         self._pl.addWidget(nota)
@@ -605,6 +605,7 @@ class DeviceScreen(QWidget):
     def _on_motor(self, _indice=None) -> None:
         minimos.definir_motor(self._seg_motor.value())
         self._refresh_engine()
+        self._refresh_bridge()          # o texto da ponte depende do motor
         self._refresh_source_note()
         self.motor_changed.emit()
 

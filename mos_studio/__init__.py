@@ -5,4 +5,4 @@ interface; ``mos_studio.ui`` é a interface em PySide6, com a camada de tema em
 ``mos_studio.ui.theme``.
 """
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"

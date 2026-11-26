@@ -44,7 +44,7 @@ ROTEIRO: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("processo", "Processo 1-D — a receita, passo a passo", ("receita1d",)),
     ("resultados", "Resultados 1-D — perfil de dopagem, camadas e junção",
      ("roda1d",)),
-    ("dispositivo", "Dispositivo — MINIMOS: curvas I-V e mapas 2-D",
+    ("dispositivo", "Dispositivo — MOSIM: curvas I-V e mapas 2-D",
      ("rodaminimos",)),
     ("malha", "Malha 2-D — linhas, regiões e contornos", ("vai2d",)),
     ("processo2d", "Processo 2-D — a receita do SUPREM-IV", ()),
@@ -155,13 +155,19 @@ def _acoes(janela, app, quais: tuple[str, ...]) -> dict[str, object]:
         _esperar(app, janela)
 
     def rodaminimos() -> None:
-        """Leva o perfil ao MINIMOS e espera a curva I-V.
+        """Leva o perfil ao motor de dispositivo e espera a curva I-V.
 
-        A tela de Dispositivo sem execução mostra só "Rode o MINIMOS para ver
-        a curva" — nada que valha uma figura.
+        As figuras mostram o MOSIM, que é o motor que o pacote entrega (o
+        MINIMOS, por licença, cada usuário instala o seu). Sem execução a tela
+        mostra só "Rode a simulação para ver a curva" — nada que valha figura.
         """
+        from .core import minimos as _mm
+        _mm.definir_motor(_mm.MOTOR_ABERTO)
         janela.go("dispositivo")
         _assentar(app)
+        janela.dispositivo._refresh_engine()
+        janela.dispositivo._refresh_bridge()
+        janela.dispositivo._refresh_source_note()
         janela.dispositivo.run()
         limite = time.monotonic() + ESPERA
         while time.monotonic() < limite:

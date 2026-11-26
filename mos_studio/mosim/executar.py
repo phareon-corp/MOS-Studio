@@ -85,6 +85,33 @@ def pontos_polarizacao(deck: Deck, modelo: str) -> list[dict[str, float]]:
     return pts
 
 
+def nao_suportado(deck) -> str | None:
+    """O que o deck pede e o MOSIM ainda não modela (None = tudo coberto).
+
+    Melhor recusar com uma frase clara do que rodar calado sem a física pedida
+    e devolver números que parecem certos.
+    """
+    rec = deck.uma("RECOMBINATION")
+    if any(k.startswith("MTUN") and (rec.num(k, 0.0) or 0.0) > 0 for k in rec.chaves):
+        return "tunelamento banda a banda (RECOMBINATION MTUN)"
+    itf = deck.uma("INTERFACE")
+    extra = sorted(k for k in itf.chaves if k != "NSS")
+    if extra:
+        return f"armadilhas de interface ({', '.join(extra)} na diretiva INTERFACE)"
+    for p in deck.todas("PROFILE"):
+        traps = [k for k in p.chaves if k in ("CA", "CD") or k.startswith("VA") or k.startswith("VD")]
+        if traps:
+            return f"armadilhas de volume ({', '.join(traps)} na diretiva PROFILE)"
+    opt = deck.uma("OPTION")
+    if opt.logico("LCPUMP") or opt.logico("CP"):
+        return "bombeamento de carga (OPTION LCPUMP)"
+    if "OMEGA" in opt or "JCAP" in deck.uma("BIAS"):
+        return "análise AC de pequenos sinais (OMEGA/JCAP)"
+    if opt.logico("GCHCALC"):
+        return "cálculo de carga e capacitância de porta (GCHCALC)"
+    return None
+
+
 def executar(texto: str, log=None, resolucao: float | None = None, dopfile=None) -> dict:
     """Roda o deck e devolve ``{"out", "ref", "iv", "returncode", "pontos"}``."""
     agora = datetime.datetime.now().strftime("%y/%m/%d  %H:%M:%S")
@@ -118,6 +145,9 @@ def executar(texto: str, log=None, resolucao: float | None = None, dopfile=None)
         if modelo not in ("T", "1", "2", "A"):
             raise ErroDeck(f"MODEL={opt.txt('MODEL')} ainda não é suportado pelo motor aberto "
                            "(disponíveis: THRES, 1-D, 2-D, AVAL)")
+        falta = nao_suportado(deck)
+        if falta:
+            raise ErroDeck(f"o motor aberto ainda não modela {falta}")
         pts = pontos_polarizacao(deck, modelo)
         m = simular.construir(deck, resolucao=resolucao, dopfile=dopfile)
     except ErroDeck as e:

@@ -952,9 +952,15 @@ class MainWindow(QWidget):
         self.processo.show_deck()
         self.processo.deck.set_manual(texto)
 
+    @staticmethod
+    def _nome_motor_dispositivo() -> str:
+        """O nome do motor de dispositivo em uso, para a faixa e o índice."""
+        from ..core import minimos as _mm
+        return "MOSIM" if _mm.motor_escolhido() == _mm.MOTOR_ABERTO else "MINIMOS 6.1"
+
     def _on_device_started(self) -> None:
-        """A faixa passa a assinar o MINIMOS, não o motor de processo."""
-        self.strip.set_engine("MINIMOS 6.1")
+        """A faixa passa a assinar o motor de dispositivo, não o de processo."""
+        self.strip.set_engine(self._nome_motor_dispositivo())
         self.strip.show_running("Simulando o dispositivo…", 0.0, 0.3)
 
     def _on_device_finished(self, caixa) -> None:
@@ -962,7 +968,7 @@ class MainWindow(QWidget):
         registro = workspace.record_dir(
             caixa.get("__dir__"),
             name=f"{self.project.name} — dispositivo",
-            engine="MINIMOS 6.1")
+            engine=self._nome_motor_dispositivo())
         if registro is not None:
             self.resultados.reload()
             self.inicio.refresh()
