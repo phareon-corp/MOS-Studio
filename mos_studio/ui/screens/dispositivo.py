@@ -74,25 +74,31 @@ class _InstallWorker(QThread):
 
 
 class _RunWorker(QThread):
-    """Roda o MINIMOS fora da interface."""
+    """Roda o motor de dispositivo (MINIMOS ou o aberto) fora da interface."""
 
     done = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, deck: str, mdir, parent=None) -> None:
+    def __init__(self, deck: str, motor: str, parent=None) -> None:
         super().__init__(parent)
         self._deck = deck
-        self._mdir = mdir
+        self._motor = motor
 
     def run(self) -> None:          # noqa: D102 - API do QThread
         import threading
         pronto = threading.Event()
         caixa: dict = {}
-        minimos.run(self._deck, self._mdir, base="mos_studio",
-                    callback_done=lambda r: (caixa.update(r), pronto.set()),
-                    callback_error=lambda e: (caixa.update(erro=e),
-                                              pronto.set()))
-        pronto.wait(600)
+        try:
+            minimos.run_motor(self._deck, base="mos_studio", motor=self._motor,
+                              callback_done=lambda r: (caixa.update(r), pronto.set()),
+                              callback_error=lambda e: (caixa.update(erro=e),
+                                                        pronto.set()))
+        except RuntimeError as exc:
+            self.failed.emit(str(exc))
+            return
+        # o motor aberto pode levar alguns minutos numa varredura longa
+        if not pronto.wait(3600):
+            caixa["erro"] = "o motor não terminou em uma hora"
         if caixa.get("erro"):
             self.failed.emit(str(caixa["erro"]))
         else:
@@ -104,6 +110,7 @@ class DeviceScreen(QWidget):
 
     run_started = Signal()
     run_finished = Signal(object)
+    motor_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -209,6 +216,15 @@ class DeviceScreen(QWidget):
         lay.addWidget(rolagem, 1)
 
         lay.addWidget(hline())
+        self._seg_motor = Segmented(
+            [(minimos.MOTOR_MINIMOS, "MINIMOS 6.1"),
+             (minimos.MOTOR_ABERTO, "Aberto (MOSIM)")],
+            minimos.motor_escolhido())
+        self._seg_motor.setToolTip(
+            "MINIMOS: o original da TU Wien, se você o instalou. Aberto: o "
+            "simulador do MOS-Studio, que lê os mesmos decks e segue os "
+            "modelos do manual do MINIMOS 6.")
+        self._seg_motor.changed.connect(self._on_motor)
         self._motor = label("", wrap=True)
         self._motor.setFont(theme.font("mono", "micro"))
         theme.mark(self._motor, role="muted")
@@ -217,6 +233,7 @@ class DeviceScreen(QWidget):
         rl.setContentsMargins(theme.space("8"), theme.space("5"),
                               theme.space("8"), theme.space("5"))
         rl.setSpacing(theme.space("4"))
+        rl.addWidget(self._seg_motor)
         rl.addWidget(self._motor)
         self._btn_instalar = button(
             "Instalar MINIMOS a partir do .zip…",
@@ -542,20 +559,30 @@ class DeviceScreen(QWidget):
         linhas = [(ln, None) for ln in texto.replace("\r\n", "\n").split("\n")]
         self.deck.set_generated(linhas, "dispositivo.inp")
 
+    def _on_motor(self, _indice=None) -> None:
+        minimos.definir_motor(self._seg_motor.value())
+        self._refresh_engine()
+        self.motor_changed.emit()
+
     def _refresh_engine(self) -> None:
-        mdir = minimos.find_dir()
-        problema = (minimos.check_engine(mdir) if mdir else
-                    "MINIMOS não instalado — ele não vem com o programa "
-                    "(licença da TU Wien); instale-o a partir do zip")
+        motor = minimos.motor_escolhido()
+        if self._seg_motor.value() != motor:
+            self._seg_motor.blockSignals(True)
+            self._seg_motor.set_value(motor)
+            self._seg_motor.blockSignals(False)
+        problema = minimos.problemas_motor(motor)
         if problema:
-            self._motor.setText(problema if isinstance(problema, str)
-                                else "; ".join(problema))
+            self._motor.setText("; ".join(problema))
             self._btn_run.setEnabled(False)
+        elif motor == minimos.MOTOR_ABERTO:
+            self._motor.setText("motor aberto (MOSIM): lê o deck do MINIMOS e "
+                                "segue os modelos do manual do MINIMOS 6")
+            self._btn_run.setEnabled(True)
         else:
-            self._motor.setText(f"motor em {mdir.name}")
+            self._motor.setText(f"MINIMOS em {minimos.find_dir().name}")
             self._btn_run.setEnabled(True)
         if self._install_worker is None:
-            self._btn_instalar.setVisible(bool(problema))
+            self._btn_instalar.setVisible(not minimos.minimos_instalado())
 
     def install_engine(self) -> None:
         """Pede o minimoswin6.1.zip e instala o motor a partir dele."""
@@ -666,15 +693,12 @@ class DeviceScreen(QWidget):
     def run(self) -> None:
         if self._worker is not None:
             return
-        mdir = minimos.find_dir()
-        if mdir is None or minimos.check_engine(mdir):
+        motor = minimos.motor_escolhido()
+        problemas = minimos.problemas_motor(motor)
+        if problemas:
             self.erro.show_error(
-                "O MINIMOS não está pronto",
-                "; ".join(minimos.check_engine(mdir)) if mdir else
-                "O MINIMOS não vem com o programa (licença da TU Wien). Use "
-                "\"Instalar MINIMOS a partir do .zip…\" com o "
-                "minimoswin6.1.zip.",
-                "")
+                f"O {minimos.NOMES_MOTOR[motor]} não está pronto",
+                "; ".join(problemas), "")
             return
         self.erro.hide()
         self.result = None
@@ -683,9 +707,9 @@ class DeviceScreen(QWidget):
         self.superficie.clear()
         self._metricas["vt"].setText("—")
         self._metricas["id"].setText("—")
-        self._andamento.setText("rodando o MINIMOS…")
+        self._andamento.setText(f"rodando o {minimos.NOMES_MOTOR[motor]}…")
         self._btn_run.setEnabled(False)
-        self._worker = _RunWorker(self.deck_text(), mdir, self)
+        self._worker = _RunWorker(self.deck_text(), motor, self)
         self._worker.done.connect(self._on_done)
         self._worker.failed.connect(self._on_failed)
         self._worker.start()
@@ -695,7 +719,9 @@ class DeviceScreen(QWidget):
         self._worker = None
         self._btn_run.setEnabled(True)
         self._andamento.setText("a corrida falhou")
-        self.erro.show_error("O MINIMOS não concluiu", mensagem, mensagem)
+        self.erro.show_error(
+            f"O {minimos.NOMES_MOTOR[minimos.motor_escolhido()]} não concluiu",
+            mensagem, mensagem)
 
     def _on_done(self, caixa: dict) -> None:
         self._worker = None
@@ -731,6 +757,9 @@ class DeviceScreen(QWidget):
     def _diagnose(self, ref: str) -> str:
         """Traduz as falhas conhecidas deste motor para algo acionável."""
         alto = ref.upper()
+        erros = [l.strip(" 0") for l in ref.splitlines() if "*ERROR*" in l.upper()]
+        if erros:
+            return "O deck foi recusado: " + erros[0].replace("*ERROR*", "").strip()
         if "SIGSEGV" in alto:
             return ("O motor abortou com falha de memória. Nesta compilação "
                     "isso acontece quando o recozimento é curto demais para "

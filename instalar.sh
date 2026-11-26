@@ -171,6 +171,12 @@ if ! "$VENV/bin/python" -c 'import PySide6' >/dev/null 2>&1; then
       "PySide6-Essentials>=6.5" \
     || falha "o pip não conseguiu instalar o PySide6 (sem internet?)"
 fi
+# numpy e scipy: o motor de dispositivo aberto (MOSIM) precisa deles.
+if ! "$VENV/bin/python" -c 'import numpy, scipy.sparse.linalg' >/dev/null 2>&1; then
+  info "baixando numpy e scipy para o motor de dispositivo aberto (uns 60 MB)"
+  "$VENV/bin/python" -m pip install -q --disable-pip-version-check "numpy>=1.24" "scipy>=1.10" \
+    || aviso "o pip não conseguiu instalar numpy/scipy: o motor aberto não vai rodar"
+fi
 info "$("$VENV/bin/python" -c 'import sys, PySide6; print(f"Python {sys.version.split()[0]}, PySide6 {PySide6.__version__}")')"
 
 # O plugin do Qt que abre a janela no X11/XWayland: se alguma biblioteca

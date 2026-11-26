@@ -330,3 +330,114 @@ def write_2d_profile(path: str | Path, nd_sub: float = 2.5e13,
         for v in range(nv):
             f.write(recd(accep[v]))
     return path
+
+
+# ── motor de dispositivo: MINIMOS original ou MOSIM (aberto) ──────────────
+#
+# O MINIMOS não pode vir com o programa (licença da TU Wien); o MOSIM é o
+# simulador aberto do próprio MOS-Studio, que lê os mesmos decks e grava as
+# saídas no mesmo formato (ver docs/adr/0005). Com o MINIMOS instalado, o
+# usuário escolhe; sem ele, o aberto é o padrão.
+
+#: Chave de configuração com a escolha do usuário.
+MOTOR_CONFIG = "motor_dispositivo"
+MOTOR_MINIMOS = "minimos"
+MOTOR_ABERTO = "aberto"
+
+NOMES_MOTOR = {MOTOR_MINIMOS: "MINIMOS 6.1", MOTOR_ABERTO: "MOSIM (aberto)"}
+
+
+def problemas_aberto() -> list[str]:
+    """O que impede o motor aberto de rodar (vazio = pronto)."""
+    try:
+        import numpy  # noqa: F401
+        import scipy.sparse.linalg  # noqa: F401
+    except ImportError:
+        return ["o motor aberto precisa de numpy e scipy (rode o instalador de novo)"]
+    return []
+
+
+def minimos_instalado() -> bool:
+    return not check_engine(find_dir())
+
+
+def motor_escolhido() -> str:
+    """Motor de dispositivo em uso: a escolha salva ou, sem ela, o que houver."""
+    from .. import config
+
+    salvo = str(config.get(MOTOR_CONFIG, "") or "")
+    if salvo in (MOTOR_MINIMOS, MOTOR_ABERTO):
+        return salvo
+    return MOTOR_MINIMOS if minimos_instalado() else MOTOR_ABERTO
+
+
+def definir_motor(motor: str) -> None:
+    from .. import config
+
+    if motor in (MOTOR_MINIMOS, MOTOR_ABERTO):
+        config.set(MOTOR_CONFIG, motor)
+
+
+def problemas_motor(motor: str | None = None) -> list[str]:
+    motor = motor or motor_escolhido()
+    if motor == MOTOR_ABERTO:
+        return problemas_aberto()
+    mdir = find_dir()
+    if mdir is None:
+        return ["MINIMOS não instalado — ele não vem com o programa (licença da "
+                "TU Wien); instale-o a partir do zip ou use o motor aberto"]
+    return check_engine(mdir)
+
+
+def run_aberto(inp_text: str, base: str = "mm_run",
+               callback_done: Callable[[dict], None] | None = None,
+               callback_error: Callable[[str], None] | None = None) -> threading.Thread:
+    """Roda o deck no MOSIM em segundo plano; resultado no formato de :func:`run`."""
+
+    def _run():
+        try:
+            from ..mosim.executar import executar
+            r = executar(inp_text)
+            result: dict[str, Any] = {
+                "out": r["out"], "ref": r["ref"], "iv": r["iv"] or None,
+                "mtv": None, "pif": r.get("pif"), "returncode": r["returncode"],
+                "stages": ["MOSIM (motor aberto)"], "motor": MOTOR_ABERTO,
+            }
+            try:
+                from .workspace import runs_dir
+                stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                dest = runs_dir() / f"mosim_{base}_{stamp}"
+                dest.mkdir(parents=True, exist_ok=True)
+                (dest / f"{base}.inp").write_text(inp_text, encoding="latin1", errors="replace")
+                for ext, chave in (("out", "out"), ("ref", "ref"), ("iv", "iv"), ("asciipif", "pif")):
+                    if result.get(chave):
+                        (dest / f"{base}.{ext}").write_text(result[chave], encoding="latin1",
+                                                           errors="replace")
+                result["__dir__"] = str(dest)
+                result["files"] = sorted(p.name for p in dest.iterdir())
+            except OSError:
+                result["__dir__"] = None
+                result["files"] = []
+            if callback_done:
+                callback_done(result)
+        except Exception as e:  # noqa: BLE001 - erro vai para a interface
+            if callback_error:
+                callback_error(f"{type(e).__name__}: {e}")
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    return thread
+
+
+def run_motor(inp_text: str, base: str = "mm_run", motor: str | None = None,
+              callback_done: Callable[[dict], None] | None = None,
+              callback_error: Callable[[str], None] | None = None) -> threading.Thread:
+    """Roda o deck no motor escolhido (MINIMOS ou aberto)."""
+    motor = motor or motor_escolhido()
+    if motor == MOTOR_ABERTO:
+        return run_aberto(inp_text, base, callback_done, callback_error)
+    mdir = find_dir()
+    if mdir is None:
+        raise RuntimeError(problemas_motor(MOTOR_MINIMOS)[0])
+    return run(inp_text, mdir, base=base, callback_done=callback_done,
+               callback_error=callback_error)

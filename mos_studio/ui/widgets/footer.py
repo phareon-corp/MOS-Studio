@@ -58,7 +58,8 @@ class Footer(QWidget):
 
     def set_engines(self, suprem_problems: list[str],
                     minimos_problems: list[str],
-                    suprem4_problems: list[str] | None = None) -> None:
+                    suprem4_problems: list[str] | None = None,
+                    nome_dispositivo: str = "MINIMOS") -> None:
         """Atualiza o estado dos motores a partir das listas de problemas.
 
         Os dois motores de processo aparecem juntos quando ambos estão
@@ -76,8 +77,8 @@ class Footer(QWidget):
         self._txt_sup.setText(texto.upper())
         self._dot_mm.set_ok(not minimos_problems)
         self._txt_mm.setText(
-            ("MINIMOS pronto" if not minimos_problems
-             else "MINIMOS · " + minimos_problems[0]).upper())
+            (f"{nome_dispositivo} pronto" if not minimos_problems
+             else f"{nome_dispositivo} · " + minimos_problems[0]).upper())
 
     def set_right(self, text: str) -> None:
         """Texto da direita. Não maiusculiza: costuma conter caminho de arquivo."""

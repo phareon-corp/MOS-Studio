@@ -77,6 +77,19 @@ ARQUIVOS = {
         "c2c6863aa80ec18c0f82cea3417837b279cdc60024ac17123461dc9042577df7"),
 }
 
+#: numpy e scipy, de que o motor de dispositivo aberto (mos_studio/mosim)
+#: precisa. Mesmas versões do Linux de desenvolvimento.
+NUMPY = "2.4.6"
+SCIPY = "1.17.1"
+ARQUIVOS.update({
+    f"numpy-{NUMPY}-cp{PYTHON_TAG}-cp{PYTHON_TAG}-win_amd64.whl": (
+        None,
+        "c4fc99836233ea196540b17ab0983aff60ed07941751930f5f4d05bc3b3b7359"),
+    f"scipy-{SCIPY}-cp{PYTHON_TAG}-cp{PYTHON_TAG}-win_amd64.whl": (
+        None,
+        "37425bc9175607b0268f493d79a292c39f9d001a357bebb6b88fdfaff13f6448"),
+})
+
 #: Módulos Qt que a interface usa. Conferido com
 #: ``grep -r "from PySide6" mos_studio/``: são só estes três.
 MODULOS_QT = ("QtCore", "QtGui", "QtWidgets")
@@ -121,6 +134,14 @@ def baixar() -> None:
              "--platform", "win_amd64", "--python-version", PYTHON_TAG,
              "--implementation", "cp", "--abi", "abi3",
              f"PySide6-Essentials=={PYSIDE}", f"shiboken6=={PYSIDE}"],
+            check=True)
+        passo("baixando as rodas do numpy e do scipy (pip, plataforma win_amd64)")
+        subprocess.run(
+            [sys.executable, "-m", "pip", "download", "--quiet",
+             "--dest", str(CACHE), "--no-deps", "--only-binary", ":all:",
+             "--platform", "win_amd64", "--python-version", PYTHON_TAG,
+             "--implementation", "cp",
+             f"numpy=={NUMPY}", f"scipy=={SCIPY}"],
             check=True)
 
     for nome, (url, esperado) in ARQUIVOS.items():
@@ -212,6 +233,11 @@ def montar_pyside() -> None:
         if nome.endswith(".whl"):
             with zipfile.ZipFile(CACHE / nome) as z:
                 z.extractall(lib)
+    # numpy/scipy: fora as suítes de teste deles (dezenas de MB sem uso)
+    for pacote in ("numpy", "scipy"):
+        for testes in list((lib / pacote).rglob("tests")):
+            if testes.is_dir():
+                shutil.rmtree(testes, ignore_errors=True)
 
     ps = lib / "PySide6"
     antes = sum(f.stat().st_size for f in ps.rglob("*") if f.is_file())

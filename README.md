@@ -20,6 +20,8 @@ por nenhum arquivo intermediário editado à mão.
 
 ## Estado
 
+- **Testado e aprovado** (novembro de 2026): os três motores, a interface nas
+  doze telas e o MOSIM, no Linux e no Windows.
 - **Linux e Windows: os três motores funcionam.** No Linux o `instalar.sh`
   instala as dependências e compila os motores sozinho; no Windows o
   instalador `.exe` já traz o SUPREM-III e o SUPREM-IV compilados.
@@ -27,14 +29,44 @@ por nenhum arquivo intermediário editado à mão.
   a usuários registrados e não permite repassá-lo. Quem tem o
   `minimoswin6.1.zip` o instala com um clique na tela de Dispositivo (ou
   `./instalar.sh --minimos ZIP`). Ver [Os motores](#os-motores-e-como-obtê-los).
+- **Sem o MINIMOS, a tela de Dispositivo usa o MOSIM**, o simulador aberto do
+  próprio programa, que lê os mesmos decks e grava as mesmas saídas. Ver
+  [MOSIM](#mosim--o-motor-de-dispositivo-aberto-já-incluído).
 - Versão publicada: **v2.1.0**, com instalador de Windows e pacote de Linux
-  em [Releases](https://github.com/phareon-corp/MOS-Studio/releases).
-- Suíte: **857 testes**. Boa parte sobe o motor de verdade, e se auto-pula
+  em [Releases](https://github.com/phareon-corp/MOS-Studio/releases). O
+  MOSIM já está no código-fonte; os pacotes da v2.1.0 ainda não o trazem.
+- Licença do código: **Apache-2.0** ([`LICENSE`](LICENSE)).
+- Suíte: **867 testes**, todos passando. Boa parte sobe o motor de verdade, e se auto-pula
   quando ele não está instalado.
 
 | ![Seção transversal, terreno claro](docs/img/resultados2d-claro.png) | ![Seção transversal, terreno escuro](docs/img/resultados2d-escuro.png) |
 |---|---|
 | Resultados 2-D, terreno **claro** — o padrão | a mesma tela no terreno **escuro** |
+
+### Capturas de tela
+
+<table>
+<tr>
+<td align="center"><a href="docs/img/inicio-claro.png"><img src="docs/img/inicio-claro.png" alt="Início" width="300"></a><br><sub>Início</sub></td>
+<td align="center"><a href="docs/img/exemplos-claro.png"><img src="docs/img/exemplos-claro.png" alt="Exemplos" width="300"></a><br><sub>Exemplos</sub></td>
+<td align="center"><a href="docs/img/processo-claro.png"><img src="docs/img/processo-claro.png" alt="Processo 1-D" width="300"></a><br><sub>Processo 1-D</sub></td>
+</tr>
+<tr>
+<td align="center"><a href="docs/img/resultados-claro.png"><img src="docs/img/resultados-claro.png" alt="Resultados 1-D" width="300"></a><br><sub>Resultados 1-D</sub></td>
+<td align="center"><a href="docs/img/dispositivo-claro.png"><img src="docs/img/dispositivo-claro.png" alt="Dispositivo" width="300"></a><br><sub>Dispositivo</sub></td>
+<td align="center"><a href="docs/img/oxidacao-claro.png"><img src="docs/img/oxidacao-claro.png" alt="Oxidação" width="300"></a><br><sub>Oxidação</sub></td>
+</tr>
+<tr>
+<td align="center"><a href="docs/img/malha-claro.png"><img src="docs/img/malha-claro.png" alt="Malha 2-D" width="300"></a><br><sub>Malha 2-D</sub></td>
+<td align="center"><a href="docs/img/processo2d-claro.png"><img src="docs/img/processo2d-claro.png" alt="Processo 2-D" width="300"></a><br><sub>Processo 2-D</sub></td>
+<td align="center"><a href="docs/img/resultados2d-claro.png"><img src="docs/img/resultados2d-claro.png" alt="Resultados 2-D" width="300"></a><br><sub>Resultados 2-D</sub></td>
+</tr>
+<tr>
+<td align="center"><a href="docs/img/modelos-claro.png"><img src="docs/img/modelos-claro.png" alt="Modelos" width="300"></a><br><sub>Modelos</sub></td>
+<td align="center"><a href="docs/img/console-claro.png"><img src="docs/img/console-claro.png" alt="Console" width="300"></a><br><sub>Console</sub></td>
+<td align="center"><a href="docs/img/estrutura-claro.png"><img src="docs/img/estrutura-claro.png" alt="Estruturas" width="300"></a><br><sub>Estruturas</sub></td>
+</tr>
+</table>
 
 As doze telas nos dois terrenos estão em [`docs/img/`](docs/img/), e são
 geradas pelo próprio programa (`--capturar`, ver [Usar](#usar)) — não há
@@ -195,6 +227,25 @@ pelo programa. Com o `minimoswin6.1.zip` em mãos:
 No Windows o `mm_pl.exe` do zip é usado como está; no Linux o fonte do zip é
 compilado com `build_minimos.sh`.
 
+### MOSIM — o motor de dispositivo aberto, já incluído
+
+Sem o MINIMOS, a tela de Dispositivo usa o **MOSIM**, o simulador aberto do
+próprio programa (`mos_studio/mosim/`). Ele lê os mesmos decks do MINIMOS e
+grava as saídas no mesmo formato (`.out`, `.ref`, `.iv`, PIF); os modelos são
+os do manual do MINIMOS 6, e o que o manual não detalha foi medido na saída
+do MINIMOS para que os números coincidam. Com os dois instalados, a escolha
+fica na tela de Dispositivo. Também roda pela linha de comando:
+
+```bash
+python -m mos_studio.mosim deck.inp      # grava deck.out, deck.ref e deck.iv
+```
+
+Cobre `MODEL=THRES`, `1-D` e `2-D` de MOSFETs de silício com perfil analítico.
+Nos decks de canal longo testados, o Vth difere do MINIMOS em até 0,02 V e a
+corrente acima do limiar em até 2 %; em canal curto a corrente pode diferir
+alguns por cento, por causa da malha. Detalhes e limites em
+[docs/adr/0005](docs/adr/0005-motor-de-dispositivo-aberto.md).
+
 ### Onde o programa procura
 
 | Motor | Pastas, na ordem |
@@ -271,7 +322,7 @@ etapa por etapa, com a seção transversal crescendo a cada etapa.
 | [Exemplos](docs/img/exemplos-claro.png) | duas receitas 1-D de transistor, editáveis como projeto, e os 18 decks de fábrica do SUPREM-IV |
 | [Processo 1-D](docs/img/processo-claro.png) | a receita: etapas tipadas, com unidade, faixa e verificação antes de rodar |
 | [Resultados 1-D](docs/img/resultados-claro.png) | perfil por etapa, junção e camadas; marque outras execuções para sobrepor as curvas |
-| [Dispositivo](docs/img/dispositivo-claro.png) | MINIMOS: curva I-V, mapas 2-D de campo, superfície 3-D e o deck `.inp` editável |
+| [Dispositivo](docs/img/dispositivo-claro.png) | MINIMOS ou MOSIM: curva I-V, mapas 2-D de campo, superfície 3-D e o deck `.inp` editável |
 | [Oxidação](docs/img/oxidacao-claro.png) | Deal-Grove: ajusta os coeficientes contra uma varredura e mostra o R² |
 | [Malha 2-D](docs/img/malha-claro.png) | linhas, regiões e contornos, com contagem de nós e tempo estimado **antes** de rodar |
 | [Processo 2-D](docs/img/processo2d-claro.png) | a mesma receita, no dialeto do SUPREM-IV |
@@ -333,7 +384,8 @@ mostra qual venceu.
 ## Limitações conhecidas
 
 - **O MINIMOS não vem junto** — a licença da TU Wien não permite
-  ([Os motores](#os-motores-e-como-obtê-los)).
+  ([Os motores](#os-motores-e-como-obtê-los)). O MOSIM, que vem, ainda não
+  cobre `MODEL=AVAL/HOT/MC`, MESFET, SOI nem perfis de arquivo, e é mais lento.
 - **O SUPREM-IV não desenha.** Toda figura 2-D é remontada de tabelas
   numéricas — é fiel aos números, não é a saída gráfica do motor original.
 - **O perfil não é transportado ponto a ponto para o MINIMOS**, e sim
@@ -518,8 +570,9 @@ a diferença, não fingir que ela não existe.
 ## Créditos e licença
 
 - **SUPREM-III** (Release B, rev. 8628) e **SUPREM-IV.GS** (B.9305) —
-  Stanford University e University of Florida. *All rights reserved* nos
-  cabeçalhos do fonte. **Não incluídos neste repositório.**
+  Stanford University e University of Florida. O fonte original está em
+  [`fontes/`](fontes/), sob a nota de Stanford (uso, cópia e redistribuição
+  livres, exceto comercialmente); os binários compilados não são versionados.
 - **MINIMOS 6.1** — Institut für Mikroelektronik, TU Wien. **Não incluído
   neste repositório.**
 - **Deal & Grove (1965)** — o modelo de oxidação térmica e a tabela contra a
@@ -527,5 +580,9 @@ a diferença, não fingir que ela não existe.
 - **Tipografia** — Bricolage Grotesque, Geist, Geist Mono e Instrument Serif,
   todas sob **SIL Open Font License**.
 
-**A licença do código deste repositório ainda não foi definida.** Até que
-seja, vale o padrão legal: *todos os direitos reservados*.
+**O código do MOS-Studio** — interface, geradores de deck, leitores de saída,
+o MOSIM, os remendos em `patches/` e os scripts de instalação — está sob a
+**Licença Apache 2.0** (arquivo [`LICENSE`](LICENSE)). A licença não se
+estende aos motores de terceiros: o SUPREM-III e o SUPREM-IV.GS seguem a nota
+de Stanford em [`fontes/LEIA-ME.md`](fontes/LEIA-ME.md), e o MINIMOS 6.1 segue
+a licença da TU Wien de cada usuário.

@@ -139,6 +139,8 @@ class MainWindow(QWidget):
         self.resultados.open_deck_requested.connect(self._open_deck_text)
         self.dispositivo.run_started.connect(self._on_device_started)
         self.dispositivo.run_finished.connect(self._on_device_finished)
+        self.dispositivo.motor_changed.connect(
+            lambda: (self._refresh_engines(), self._refresh_run_button()))
         self.oxidacao.run_requested.connect(
             lambda: self.strip.show_running("Varrendo a oxidação…", 0.0, 0.2))
 
@@ -362,9 +364,10 @@ class MainWindow(QWidget):
     def _refresh_engines(self) -> None:
         self._suprem_problems = suprem.check_engine(suprem.find_run_dir())
         self._suprem4_problems = suprem4.check_engine(suprem4.find_run_dir())
-        self._minimos_problems = minimos.check_engine(minimos.find_dir())
+        self._minimos_problems = minimos.problemas_motor()
         self.footer.set_engines(self._suprem_problems, self._minimos_problems,
-                                self._suprem4_problems)
+                                self._suprem4_problems,
+                                minimos.NOMES_MOTOR[minimos.motor_escolhido()])
         self._refresh_footer_right()
 
     def _refresh_footer_right(self) -> None:
