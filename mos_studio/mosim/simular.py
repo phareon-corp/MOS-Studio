@@ -356,3 +356,30 @@ def limiar(m: Modelo, U: dict[str, float], est: Estado | None = None, log=None,
             return ug + inc, idr, est
         ug += inc * (1 if m.sinal > 0 else 1)
     return ug, idr, est
+
+
+def resolver_aval(m: Modelo, U: dict[str, float], est: Estado | None = None, log=None,
+                  impacto: bool = True):
+    """MODEL=AVAL: o ponto no modelo 2-D (malha adaptativa) e, na malha final,
+    o sistema completo de dois portadores com recombinação e avalanche.
+
+    Devolve (estado 2-D, estado bipolar, correntes de terminal em A).
+    """
+    from .bipolar import Bipolar, ParamGR
+    est, i2d = resolver_ponto(m, U, est, log=log)
+    m.est["id2d"] = i2d
+    s = m.sinal
+    alvo = {k: s * v for k, v in U.items()}
+    mob_maj = fisica.Mobilidade(m.T, "p" if m.canal_n else "n")
+    bip = Bipolar(m.disp, ParamGR.do_deck(m.deck), m.canal_n, mob_maj)
+    e2 = bip.de_estado(est, alvo)
+    e2 = bip.resolver(alvo, e2, log=log, impacto=impacto)
+    corr = bip.correntes(e2, m.W)
+    corr = {k: s * v for k, v in corr.items()}
+    m.est["bipolar"] = (bip, e2)
+    return est, e2, corr
+
+
+def ultima_corrente_2d(m: Modelo) -> float | None:
+    """ID do modelo 2-D no último ponto AVAL (o .out do MINIMOS imprime os dois)."""
+    return m.est.get("id2d")

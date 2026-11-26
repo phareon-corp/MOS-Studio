@@ -115,9 +115,9 @@ def executar(texto: str, log=None, resolucao: float | None = None) -> dict:
         deck = ler(texto)
         opt = deck.uma("OPTION")
         modelo = (opt.txt("MODEL") or "2-D")[0]
-        if modelo not in ("T", "1", "2"):
+        if modelo not in ("T", "1", "2", "A"):
             raise ErroDeck(f"MODEL={opt.txt('MODEL')} ainda não é suportado pelo motor aberto "
-                           "(disponíveis: THRES, 1-D, 2-D)")
+                           "(disponíveis: THRES, 1-D, 2-D, AVAL)")
         pts = pontos_polarizacao(deck, modelo)
         m = simular.construir(deck, resolucao=resolucao)
     except ErroDeck as e:
@@ -135,6 +135,8 @@ def executar(texto: str, log=None, resolucao: float | None = None) -> dict:
     vfb = m.wf - phif - fisica.Q * m.nss / cox
     debye = math.sqrt(fisica.EPS_SI * fisica.EPS0 * vt / (fisica.Q * d.ni)) * 1e4
     portador = "ELECTRONS" if m.canal_n else "HOLES"
+    outro = "HOLES" if m.canal_n else "ELECTRONS"
+    mob_outro = fisica.Mobilidade(m.T, "p" if m.canal_n else "n")
     resultados = []
     iv = ["##     UB (V)     UD (V)     UG (V)     US (V)     IB (A)     ID (A)     IG (A)     IS (A)"]
     est = None
@@ -148,6 +150,14 @@ def executar(texto: str, log=None, resolucao: float | None = None) -> dict:
                     m, u, est, log=lambda t: rlog("           " + t.strip()) if t.strip().startswith("limiar") else None)
                 rlog(f"           THRESHOLD VOLTAGE = {vth:9.3f} (V)")
                 u = dict(u, G=vth)
+            elif modelo == "A":
+                rlog(f"      {time.time()-t0:5.2f} ITERATION FOR MODEL = AVL  US={u['S']:6.2f} UD={u['D']:6.2f} UG={u['G']:6.2f} UB={u['B']:6.2f}")
+                id2d = None
+                est, e2, corr = simular.resolver_aval(
+                    m, u, est, log=lambda t: rlog("           " + t.strip()) if "avalanche" in t else None)
+                id2d = simular.ultima_corrente_2d(m)
+                idr = corr["D"]
+                vth = None
             else:
                 rlog(f"      {time.time()-t0:5.2f} ITERATION FOR MODEL = 2-D  US={u['S']:6.2f} UD={u['D']:6.2f} UG={u['G']:6.2f} UB={u['B']:6.2f}")
                 est, idr = simular.resolver_ponto(m, u, est)
@@ -179,19 +189,34 @@ def executar(texto: str, log=None, resolucao: float | None = None) -> dict:
         out.append(_linha("INTRINSIC NUMBER", _fmt_e(d.ni), "CM**-3"))
         out += ["", "                    MAXIMUM MOBILITY"]
         out.append(_linha(f"FOR {portador}", _fmt_e(d.mob.mu_l), "CM**2/V/S"))
+        if modelo == "A":
+            out.append(_linha(f"FOR {outro}", _fmt_e(mob_outro.mu_l), "CM**2/V/S"))
         out += ["", "                    MAXIMUM DRIFT VELOCITY"]
         out.append(_linha(f"FOR {portador}", _fmt_e(d.mob.vsat), "CM/S"))
+        if modelo == "A":
+            out.append(_linha(f"FOR {outro}", _fmt_e(mob_outro.vsat), "CM/S"))
         out += ["", ""]
         if vth is not None:
             out.append(_linha("THRESHOLD VOLTAGE", f"{vth:10.2f}", "V"))
             out += ["", ""]
             out.append(_linha("DRAIN CURRENT", _fmt_e(idr), "A") + " MODEL=1-D")
+        elif modelo == "A":
+            out.append(_linha("DRAIN CURRENT", _fmt_e(id2d), "A") + " MODEL=2-D")
+            out += ["", ""]
+            out.append(_linha("DRAIN CURRENT", _fmt_e(idr), "A") + " MODEL=AVL")
+            out.append(_linha("SOURCE CURRENT", _fmt_e(corr["S"]), "A"))
+            out.append(_linha("BULK CURRENT", _fmt_e(corr["B"]), "A"))
         else:
             out.append(_linha("DRAIN CURRENT", _fmt_e(idr), "A") + " MODEL=1-D")
             out += ["", ""]
             out.append(_linha("DRAIN CURRENT", _fmt_e(idr), "A") + " MODEL=2-D")
-        iv.append("".join(f"{v:12.3E}" for v in (u["B"], u["D"], u["G"], u["S"], 0.0, idr, 0.0, -idr)))
-        resultados.append(dict(u, ID=idr, VTH=vth))
+        if modelo == "A":
+            iv.append("".join(f"{v:12.3E}" for v in (u["B"], u["D"], u["G"], u["S"], corr["B"], idr,
+                                                      0.0, corr["S"])))
+            resultados.append(dict(u, ID=idr, IB=corr["B"], IS=corr["S"], VTH=None))
+        else:
+            iv.append("".join(f"{v:12.3E}" for v in (u["B"], u["D"], u["G"], u["S"], 0.0, idr, 0.0, -idr)))
+            resultados.append(dict(u, ID=idr, VTH=vth))
     rlog(f"      {time.time()-t0:5.2f} OUTPUT PROCESSING")
     saida = deck.uma("OUTPUT")
     pif = _pif(m, est) if saida.logico("PIF") and est is not None else None
