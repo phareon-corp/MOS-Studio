@@ -194,3 +194,84 @@ def derive(steps: list[dict], profile: list[tuple[float, float]] | None = None
         b.aviso += (" A receita não traz " + ", ".join(faltando)
                     + ": esses valores são os padrões do motor.")
     return b
+
+
+# ── ponte direta para o MOSIM: o perfil do canal ponto a ponto ────────────
+#
+# O MINIMOS aborta com PROFILE FILE=2-D; o MOSIM não. Com o motor aberto, o
+# perfil vertical que o SUPREM calculou sob a porta chega ao dispositivo como
+# está, e só fonte e dreno (que o corte de porta não contém) são reconstruídos
+# a partir dos parâmetros, como antes.
+
+AVISO_MOSIM = ("Com o MOSIM, o perfil do canal vem do SUPREM ponto a ponto "
+               "(PROFILE FILE=2-D); só fonte e dreno são reconstruídos dos "
+               "parâmetros.")
+
+
+def deck_com_perfil(deck_text: str, profile: list[tuple[float, float]], caminho) -> str:
+    """Grava o arquivo FILE=2-D e devolve o deck que o usa.
+
+    ``profile`` é o perfil líquido do SUPREM (µm, cm⁻³ com sinal: + tipo N).
+    O arquivo soma ao perfil do canal as difusões de fonte/dreno do card
+    PROFILE do deck; o deck devolvido troca PROFILE e IMPLANT por FILE=2-D.
+    """
+    import math
+
+    import numpy as np
+    from scipy.special import erfc
+
+    from ..mosim import perfil as perfil_mod
+    from ..mosim.deck import ler
+
+    if not profile:
+        raise ValueError("sem perfil de processo para transportar")
+    deck = ler(deck_text)
+    dev = deck.uma("DEVICE")
+    canal_n = (dev.txt("CHANNEL") or "N").startswith("N")
+    L_um = dev.num("L") * 1e4
+    tins_um = dev.num("TINS") * 1e4
+    analitico = perfil_mod.montar(deck, canal_n, L_um, tins_um)
+    ys = np.array([max(0.0, float(y)) for y, _ in profile])
+    cs = np.array([float(c) for _, c in profile])
+    ordem = np.argsort(ys)
+    ys, cs = ys[ordem], cs[ordem]
+    sx = max(analitico.sigma_x, 1e-4) * math.sqrt(2.0)
+
+    def sd(x, y, absoluto=False):
+        n = np.zeros(np.broadcast(x, y).shape)
+        for imp, xs, xd in analitico.sd:
+            lat = 0.5 * erfc((x - xs) / sx) + 0.5 * erfc((xd - x) / sx)
+            v = imp(y)
+            n = n + (np.abs(v) if absoluto else v) * lat
+        return n
+
+    def canal(y):
+        return np.interp(y, ys, cs, left=cs[0], right=cs[-1])
+
+    def liquida(x, y):
+        return sd(x, y) + canal(y)
+
+    def total(x, y):
+        return sd(x, y, True) + np.abs(canal(y))
+
+    sgap = (dev.num("SGAP") or 10 * dev.num("TINS")) * 1e4
+    pl = np.unique(np.concatenate([np.linspace(-(sgap + 3.0), -1.0, 12),
+                                   np.linspace(-1.0, min(1.0, L_um / 2), 101),
+                                   np.linspace(min(1.0, L_um / 2), L_um / 2, 6), [0.0]]))
+    fundo = max(3.0, float(ys[-1]))
+    pv = np.unique(np.concatenate([np.linspace(0.0, 0.05, 26), np.linspace(0.05, 1.0, 96),
+                                   np.linspace(1.0, fundo, 21), ys[ys <= fundo]]))
+    perfil_mod.exportar_2d(caminho, liquida, total, L_um, pl, pv)
+    # o deck: tudo que define dopagem sai, entra PROFILE FILE=2-D
+    linhas, pulando = [], False
+    for l in deck_text.splitlines():
+        u = l.strip().upper()
+        if u.startswith("+") and pulando:
+            continue
+        pulando = u.startswith("PROFILE") or u.startswith("IMPLANT")
+        if pulando:
+            if u.startswith("PROFILE") and not any(x.startswith("PROFILE    FILE") for x in linhas):
+                linhas.append("PROFILE    FILE=2-D")
+            continue
+        linhas.append(l)
+    return "\n".join(linhas) + "\n"

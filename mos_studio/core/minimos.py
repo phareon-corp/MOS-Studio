@@ -259,7 +259,7 @@ def build_deck(p: dict[str, Any]) -> str:
     nss = p.get("nss", None)
     if nss not in (None, ""):
         L.append(f"INTERFACE  NSS={float(nss):.3E}")
-    model = "THRES" if mode == "vth" else "2-D"
+    model = "THRES" if mode == "vth" else ("AVAL" if f("fisica", "2d") == "aval" else "2-D")
     L.append(f"OPTION     MODEL={model}")
     if mode == "op" or f("maps", False):
         out = "ALL=YES PIF=YES"
@@ -391,16 +391,17 @@ def problemas_motor(motor: str | None = None) -> list[str]:
 
 def run_aberto(inp_text: str, base: str = "mm_run",
                callback_done: Callable[[dict], None] | None = None,
-               callback_error: Callable[[str], None] | None = None) -> threading.Thread:
+               callback_error: Callable[[str], None] | None = None,
+               dopfile: str | Path | None = None) -> threading.Thread:
     """Roda o deck no MOSIM em segundo plano; resultado no formato de :func:`run`."""
 
     def _run():
         try:
             from ..mosim.executar import executar
-            r = executar(inp_text)
+            r = executar(inp_text, dopfile=dopfile)
             result: dict[str, Any] = {
                 "out": r["out"], "ref": r["ref"], "iv": r["iv"] or None,
-                "mtv": None, "pif": r.get("pif"), "returncode": r["returncode"],
+                "mtv": None, "pif": r.get("pif"), "tra": r.get("tra"), "returncode": r["returncode"],
                 "stages": ["MOSIM (motor aberto)"], "motor": MOTOR_ABERTO,
             }
             try:
@@ -409,7 +410,8 @@ def run_aberto(inp_text: str, base: str = "mm_run",
                 dest = runs_dir() / f"mosim_{base}_{stamp}"
                 dest.mkdir(parents=True, exist_ok=True)
                 (dest / f"{base}.inp").write_text(inp_text, encoding="latin1", errors="replace")
-                for ext, chave in (("out", "out"), ("ref", "ref"), ("iv", "iv"), ("asciipif", "pif")):
+                for ext, chave in (("out", "out"), ("ref", "ref"), ("iv", "iv"), ("asciipif", "pif"),
+                                   ("tra", "tra")):
                     if result.get(chave):
                         (dest / f"{base}.{ext}").write_text(result[chave], encoding="latin1",
                                                            errors="replace")
@@ -431,13 +433,14 @@ def run_aberto(inp_text: str, base: str = "mm_run",
 
 def run_motor(inp_text: str, base: str = "mm_run", motor: str | None = None,
               callback_done: Callable[[dict], None] | None = None,
-              callback_error: Callable[[str], None] | None = None) -> threading.Thread:
+              callback_error: Callable[[str], None] | None = None,
+              dopfile: str | Path | None = None) -> threading.Thread:
     """Roda o deck no motor escolhido (MINIMOS ou aberto)."""
     motor = motor or motor_escolhido()
     if motor == MOTOR_ABERTO:
-        return run_aberto(inp_text, base, callback_done, callback_error)
+        return run_aberto(inp_text, base, callback_done, callback_error, dopfile=dopfile)
     mdir = find_dir()
     if mdir is None:
         raise RuntimeError(problemas_motor(MOTOR_MINIMOS)[0])
-    return run(inp_text, mdir, base=base, callback_done=callback_done,
+    return run(inp_text, mdir, base=base, dopfile=dopfile, callback_done=callback_done,
                callback_error=callback_error)

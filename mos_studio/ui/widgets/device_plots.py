@@ -70,7 +70,7 @@ class IVChart(QWidget):
         self._curvas: list[tuple[str, list[tuple[float, float]]]] = []
         self._xlabel = ""
         self._ylabel = "ID (A)"
-        self._vazio = "Rode o MINIMOS para ver a curva"
+        self._vazio = "Rode a simulação para ver a curva"
         self.setMinimumHeight(240)
         self.setSizePolicy(QSizePolicy.Policy.Expanding,
                            QSizePolicy.Policy.Expanding)
@@ -200,7 +200,7 @@ class FieldMap(QWidget):
         self._vals: list[float] = []
         self._titulo = ""
         self._log = False
-        self._vazio = "Rode o MINIMOS no modo de mapas"
+        self._vazio = "Rode a simulação no modo de mapas"
         self.setMinimumHeight(240)
         self.setSizePolicy(QSizePolicy.Policy.Expanding,
                            QSizePolicy.Policy.Expanding)
@@ -366,7 +366,7 @@ class SurfacePlot(QWidget):
         self._zoom = 1.0
         self._malha = True
         self._arrasto: QPointF | None = None
-        self._vazio = "Rode o MINIMOS no modo de mapas"
+        self._vazio = "Rode a simulação no modo de mapas"
         self.setMinimumHeight(260)
         self.setSizePolicy(QSizePolicy.Policy.Expanding,
                            QSizePolicy.Policy.Expanding)

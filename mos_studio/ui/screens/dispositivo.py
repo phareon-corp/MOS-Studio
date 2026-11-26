@@ -33,6 +33,11 @@ from ..widgets.error_panel import EngineErrorPanel
 #: Os três modos que o motor oferece, com o nome que o usuário lê.
 MODOS = [("vth", "Limiar"), ("iv", "Curva I-V"), ("op", "Mapas 2-D")]
 
+#: A física da corrida: o modelo 2-D (deriva-difusão dos minoritários) ou o
+#: AVAL (os dois portadores, recombinação e ionização por impacto, com a
+#: corrente de substrato). O limiar é sempre o modelo do próprio limiar.
+FISICA = [("2d", "Deriva-difusão"), ("aval", "Com avalanche")]
+
 #: Campos do transistor (geometria e porta).
 CAMPOS_DISP = [
     Field("tox_nm", "Óxido de porta", "number", unit="nm", minimum=1,
@@ -79,10 +84,11 @@ class _RunWorker(QThread):
     done = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, deck: str, motor: str, parent=None) -> None:
+    def __init__(self, deck: str, motor: str, parent=None, dopfile=None) -> None:
         super().__init__(parent)
         self._deck = deck
         self._motor = motor
+        self._dopfile = dopfile
 
     def run(self) -> None:          # noqa: D102 - API do QThread
         import threading
@@ -90,6 +96,7 @@ class _RunWorker(QThread):
         caixa: dict = {}
         try:
             minimos.run_motor(self._deck, base="mos_studio", motor=self._motor,
+                              dopfile=self._dopfile,
                               callback_done=lambda r: (caixa.update(r), pronto.set()),
                               callback_error=lambda e: (caixa.update(erro=e),
                                                         pronto.set()))
@@ -155,7 +162,8 @@ class DeviceScreen(QWidget):
         hl.setContentsMargins(theme.space("8"), theme.space("8"),
                               theme.space("8"), theme.space("6"))
         hl.setSpacing(theme.space("3"))
-        hl.addWidget(eyebrow("minimos 6.1", True))
+        self._eyebrow_motor = eyebrow("dispositivo", True)
+        hl.addWidget(self._eyebrow_motor)
         hl.addWidget(label("Dispositivo", "title"))
         lay.addWidget(cabeca)
         lay.addWidget(hline())
@@ -202,6 +210,12 @@ class DeviceScreen(QWidget):
         # --- polarização ---
         cl.addWidget(eyebrow("polarização"))
         cl.addWidget(self._seg_row("Modo", "mode", MODOS))
+        self._seg_fisica = self._seg_row("Física", "fisica", FISICA)
+        self._seg_fisica.setToolTip(
+            "Com avalanche: elétrons e lacunas, recombinação e ionização por "
+            "impacto — dá a corrente de substrato (IB) e o efeito de corpo "
+            "flutuante. Mais lento que a deriva-difusão.")
+        cl.addWidget(self._seg_fisica)
         self._seg_var = self._seg_row("Varrer", "step_var",
                                       [("DG", "Porta"), ("DD", "Dreno")])
         cl.addWidget(self._seg_var)
@@ -300,7 +314,8 @@ class DeviceScreen(QWidget):
         for chave, titulo, unidade in (("vt", "Limiar", "V"),
                                        ("id", "ID máx", "A"),
                                        ("nb", "Substrato", "cm⁻³"),
-                                       ("xj", "Junção (SUPREM)", "µm")):
+                                       ("xj", "Junção (SUPREM)", "µm"),
+                                       ("ib", "IB máx", "A")):
             bloco = QWidget()
             bl = QVBoxLayout(bloco)
             bl.setContentsMargins(0, 0, 0, 0)
@@ -311,6 +326,9 @@ class DeviceScreen(QWidget):
             bl.addWidget(label(unidade, "unit"))
             ml.addWidget(bloco)
             self._metricas[chave] = valor
+            if chave == "ib":
+                self._bloco_ib = bloco
+                bloco.setVisible(False)
         ml.addStretch(1)
         lay.addWidget(metricas)
         lay.addWidget(hline())
@@ -461,7 +479,7 @@ class DeviceScreen(QWidget):
         theme.mark(nota, role="muted")
         nota.setFont(theme.font("mono", "micro"))
         self._pl.addWidget(nota)
-        self._aviso.setText(b.aviso)
+        self._aviso.setText(bridge_mod.AVISO_MOSIM if self._ponte_direta() else b.aviso)
         self._metricas["nb"].setText(fmt_number(b.nb))
         # Três casas: a junção vem de uma interpolação entre dois nós da
         # malha, e seis casas prometeriam uma precisão que ela não tem.
@@ -479,6 +497,7 @@ class DeviceScreen(QWidget):
 
     def _update_mode_visibility(self) -> None:
         self._seg_var.setVisible(self.params.get("mode") == "iv")
+        self._seg_fisica.setVisible(self.params.get("mode") != "vth")
         for chave in ("step", "nstep"):
             w = self._rows.get(chave)
             if w is not None:
@@ -496,6 +515,7 @@ class DeviceScreen(QWidget):
         n = parse_float(self.params.get("nstep"))
         p["nstep"] = int(n) if n else 20
         p["mode"] = self.params.get("mode", "iv")
+        p["fisica"] = self.params.get("fisica", "2d")
         p["step_var"] = self.params.get("step_var", "DG")
         p["auto_sign"] = False
         p["maps"] = p["mode"] == "op"
@@ -517,6 +537,26 @@ class DeviceScreen(QWidget):
         if self.deck.editing:
             return self.deck.text()
         return minimos.build_deck(self.deck_params())
+
+    def _ponte_direta(self, motor: str | None = None) -> bool:
+        """O perfil do SUPREM vai ponto a ponto? (só o MOSIM lê FILE=2-D)."""
+        motor = motor or minimos.motor_escolhido()
+        return (motor == minimos.MOTOR_ABERTO and bool(self._profile)
+                and not self.deck.editing)
+
+    def _deck_e_perfil(self, motor: str) -> tuple[str, str | None]:
+        """O deck da corrida e, com a ponte direta, o arquivo de dopagem."""
+        texto = self.deck_text()
+        if not self._ponte_direta(motor):
+            return texto, None
+        import tempfile
+        caminho = Path(tempfile.mkdtemp(prefix="mos_studio_perfil_")) / "perfil2d.bin"
+        try:
+            return bridge_mod.deck_com_perfil(texto, self._profile, caminho), str(caminho)
+        except (ValueError, KeyError, ZeroDivisionError) as exc:
+            # sem perfil utilizável, a ponte por parâmetros continua valendo
+            self._andamento.setText(f"perfil não transportado ({exc}); usando os parâmetros")
+            return texto, None
 
     def manual_deck(self) -> bool:
         return self.deck.editing
@@ -548,7 +588,10 @@ class DeviceScreen(QWidget):
             self._aviso.setText(f"deck {origem} — os campos à esquerda não "
                                 f"afetam esta execução")
         elif self.bridge is not None:
-            self._aviso.setText(self.bridge.aviso)
+            aviso = self.bridge.aviso
+            if self._ponte_direta():
+                aviso = bridge_mod.AVISO_MOSIM
+            self._aviso.setText(aviso)
         else:
             self._aviso.setText("")
 
@@ -562,6 +605,7 @@ class DeviceScreen(QWidget):
     def _on_motor(self, _indice=None) -> None:
         minimos.definir_motor(self._seg_motor.value())
         self._refresh_engine()
+        self._refresh_source_note()
         self.motor_changed.emit()
 
     def _refresh_engine(self) -> None:
@@ -570,6 +614,8 @@ class DeviceScreen(QWidget):
             self._seg_motor.blockSignals(True)
             self._seg_motor.set_value(motor)
             self._seg_motor.blockSignals(False)
+        self._eyebrow_motor.setText(
+            "mosim · motor aberto" if motor == minimos.MOTOR_ABERTO else "minimos 6.1")
         problema = minimos.problemas_motor(motor)
         if problema:
             self._motor.setText("; ".join(problema))
@@ -709,7 +755,8 @@ class DeviceScreen(QWidget):
         self._metricas["id"].setText("—")
         self._andamento.setText(f"rodando o {minimos.NOMES_MOTOR[motor]}…")
         self._btn_run.setEnabled(False)
-        self._worker = _RunWorker(self.deck_text(), motor, self)
+        deck, dopfile = self._deck_e_perfil(motor)
+        self._worker = _RunWorker(deck, motor, self, dopfile=dopfile)
         self._worker.done.connect(self._on_done)
         self._worker.failed.connect(self._on_failed)
         self._worker.start()
@@ -734,7 +781,8 @@ class DeviceScreen(QWidget):
         if not rows and not tem_mapas:
             motivo = self._diagnose(ref)
             self._andamento.setText("a corrida não produziu curva")
-            self.erro.show_error("O MINIMOS não produziu corrente", motivo,
+            self.erro.show_error(
+                f"O {minimos.NOMES_MOTOR[minimos.motor_escolhido()]} não produziu corrente", motivo,
                                  ref)
         elif rows:
             self._andamento.setText(
@@ -742,6 +790,7 @@ class DeviceScreen(QWidget):
                 else f"{len(rows)} pontos de polarização")
             self._fill_iv(headers, rows)
 
+        self._fill_ib(headers, rows)
         vt = parsers.parse_minimos_vt(ref)
         self._metricas["vt"].setText(fmt_number(vt) if vt is not None else "—")
         self._fill_maps(caixa.get("pif") or "")
@@ -777,6 +826,15 @@ class DeviceScreen(QWidget):
                     "o número de passos da varredura.")
         return ("A corrida terminou sem escrever a tabela de correntes. A "
                 "referência completa está abaixo.")
+
+    def _fill_ib(self, headers: list[str], rows: list[tuple]) -> None:
+        """Corrente de substrato (só existe com avalanche): no mostrador próprio,
+        porque na escala do ID (mil vezes maior) ela sumiria no gráfico."""
+        i_ib = headers.index("IB") if "IB" in headers else -1
+        ibs = [abs(r[i_ib]) for r in rows if i_ib >= 0 and len(r) > i_ib]
+        tem = any(v > 0 for v in ibs)
+        self._bloco_ib.setVisible(tem)
+        self._metricas["ib"].setText(fmt_number(max(ibs)) if tem else "—")
 
     def _fill_iv(self, headers: list[str], rows: list[tuple]) -> None:
         """Monta a curva a partir das colunas que o ``.iv`` trouxe."""

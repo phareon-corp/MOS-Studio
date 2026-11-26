@@ -79,7 +79,8 @@ def _subdifusao(prof: perfil_mod.Perfil) -> float:
     return float(x[k] - n[k] * (x[k + 1] - x[k]) / (n[k + 1] - n[k]))
 
 
-def construir(deck: Deck, resolucao: float | None = None, linhas_x=None, linhas_y=None) -> Modelo:
+def construir(deck: Deck, resolucao: float | None = None, linhas_x=None, linhas_y=None,
+              dopfile=None) -> Modelo:
     dev = deck.uma("DEVICE")
     if (dev.txt("MAT") or "SI")[0] == "G":
         raise ErroDeck("GaAs/MESFET ainda não é suportado pelo motor aberto")
@@ -110,7 +111,7 @@ def construir(deck: Deck, resolucao: float | None = None, linhas_x=None, linhas_
     wf = _funcao_trabalho(dev, canal_n)
     sgap = dev.num("SGAP", 10 * tins)
     dgap = dev.num("DGAP", sgap)
-    prof = perfil_mod.montar(deck, canal_n, L * 1e4, tins * 1e4)
+    prof = perfil_mod.montar(deck, canal_n, L * 1e4, tins * 1e4, dopfile=dopfile)
     nss = deck.uma("INTERFACE").num("NSS", 0.0) or 0.0
     xj = _profundidade_juncao(prof, -3.0 - 10 * prof.sigma_x)
     if filme is not None:

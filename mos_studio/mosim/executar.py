@@ -85,7 +85,7 @@ def pontos_polarizacao(deck: Deck, modelo: str) -> list[dict[str, float]]:
     return pts
 
 
-def executar(texto: str, log=None, resolucao: float | None = None) -> dict:
+def executar(texto: str, log=None, resolucao: float | None = None, dopfile=None) -> dict:
     """Roda o deck e devolve ``{"out", "ref", "iv", "returncode", "pontos"}``."""
     agora = datetime.datetime.now().strftime("%y/%m/%d  %H:%M:%S")
     ref: list[str] = []
@@ -119,7 +119,7 @@ def executar(texto: str, log=None, resolucao: float | None = None) -> dict:
             raise ErroDeck(f"MODEL={opt.txt('MODEL')} ainda não é suportado pelo motor aberto "
                            "(disponíveis: THRES, 1-D, 2-D, AVAL)")
         pts = pontos_polarizacao(deck, modelo)
-        m = simular.construir(deck, resolucao=resolucao)
+        m = simular.construir(deck, resolucao=resolucao, dopfile=dopfile)
     except ErroDeck as e:
         out += ["0*ERROR*    " + str(e), "0", "        1 OCCURENCE ERROR(S)"]
         ref += ["0*ERROR*    " + str(e)]
